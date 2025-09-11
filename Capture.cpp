@@ -46,11 +46,11 @@
 #include <fcntl.h>
 #include <csignal>
 #include <vector>
-#include <numeric>
 
 #include "DeckLinkAPI.h"
 #include "Capture.h"
 #include "Config.h"
+#include "LKFS.h"
 
 // Audio processing globals
 std::vector<double> g_leftChannelPcm;
@@ -59,19 +59,6 @@ std::vector<double> g_rightChannelPcm;
 const int kAudioSampleRate = 48000;
 const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
 const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
-
-// Placeholder for the user's loudness calculation function
-void calculateLoudness(const std::vector<double>& left, const std::vector<double>& right)
-{
-    // Example: calculate and print average for verification
-    if (!left.empty() && !right.empty())
-    {
-        double left_avg = std::accumulate(left.begin(), left.end(), 0.0) / left.size();
-        double right_avg = std::accumulate(right.begin(), right.end(), 0.0) / right.size();
-        printf("  L/R channel average: %f, %f\n", left_avg, right_avg);
-    }
-}
-
 
 static pthread_mutex_t	g_sleepMutex;
 static pthread_cond_t	g_sleepCond;
@@ -148,7 +135,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
             std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
 
             // Call the loudness calculation function
-            calculateLoudness(leftWindow, rightWindow);
+            printf("%f\n",Momentary_loudness(leftWindow,rightWindow,48000));
+			//calculateLoudness(leftWindow, rightWindow);
 
             // Remove the first 100ms (slide the window)
             g_leftChannelPcm.erase(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kSlideSizeInSamples);
