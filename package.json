@@ -1,0 +1,19 @@
+{
+  "name": "sdiloudnessmeter",
+  "version": "1.0.0",
+  "description": "``` bash make ./Capture -d 0 -m 11 ``` -h for further instruction   briefly,   -d option is to select device   -m is selecting fps. -1 is autodetect.",
+  "main": "server.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

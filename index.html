@@ -1,0 +1,114 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDI Audio Level Meter</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+        }
+        .meter-container {
+            width: 300px;
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        .level-meter {
+            width: 100%;
+            height: 50px;
+            border: 2px solid #34495e;
+            background-color: #1c2833;
+            border-radius: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+        .meter-fill {
+            height: 100%;
+            width: 0%; /* Start at 0% */
+            background-color: #27ae60;
+            transition: width 0.1s linear;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        .meter-value {
+            margin-top: 15px;
+            font-size: 2em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="meter-container">
+        <h1>SDI Loudness Meter (LKFS)</h1>
+        <div class="level-meter">
+            <div class="meter-fill" id="meterFill"></div>
+        </div>
+        <div class="meter-value" id="meterValue">-inf</div>
+    </div>
+
+    <script>
+        const meterFill = document.getElementById('meterFill');
+        const meterValue = document.getElementById('meterValue');
+
+        // WebSocket 서버에 연결 (주소는 실제 환경에 맞게 수정)
+        const ws = new WebSocket(`ws://${window.location.host}`);
+
+        ws.onopen = () => {
+            console.log('Connected to WebSocket server');
+        };
+
+        ws.onmessage = event => {
+            try {
+                const data = JSON.parse(event.data);
+                const loudness = data.loudness;
+
+                // -60 LKFS to 0 LKFS range for visualization
+                // Adjust the range as needed
+                const minLoudness = -60.0;
+                const maxLoudness = 0.0;
+                
+                let percentage = ((loudness - minLoudness) / (maxLoudness - minLoudness)) * 100;
+                percentage = Math.max(0, Math.min(100, percentage)); // Clamp between 0 and 100
+
+                meterFill.style.width = `${percentage}%`;
+                meterValue.textContent = loudness.toFixed(2);
+
+                // Change color based on level
+                if (loudness > -20) {
+                    meterFill.style.backgroundColor = '#e74c3c'; // Red
+                } else if (loudness > -23) {
+                    meterFill.style.backgroundColor = '#f1c40f'; // Yellow
+                } else {
+                    meterFill.style.backgroundColor = '#27ae60'; // Green
+                }
+
+            } catch (e) {
+                console.error('Error parsing message:', e);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from WebSocket server');
+            meterValue.textContent = 'Disconnected';
+            meterFill.style.backgroundColor = '#95a5a6';
+        };
+
+        ws.onerror = error => {
+            console.error('WebSocket Error:', error);
+            meterValue.textContent = 'Error';
+            meterFill.style.backgroundColor = '#e74c3c';
+        };
+    </script>
+</body>
+</html>

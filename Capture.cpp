@@ -136,6 +136,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
             // Call the loudness calculation function
             printf("%f\n",Momentary_loudness(leftWindow,rightWindow,kAudioSampleRate));
+            fflush(stdout); // Force flush the output buffer to stdout
 			//calculateLoudness(leftWindow, rightWindow);
 
             // Remove the first 100ms (slide the window)
@@ -166,11 +167,11 @@ int main(int argc, char *argv[])
 	HRESULT						result;
 	int							exitStatus = 1;
 
-	IDeckLinkIterator*			deckLinkIterator = NULL;
-	IDeckLink*					deckLink = NULL;
+	IDeckLinkIterator*		deckLinkIterator = NULL;
+	IDeckLink*				deckLink = NULL;
 
 	IDeckLinkProfileAttributes*	deckLinkAttributes = NULL;
-	int64_t						duplexMode;
+	int64_t					duplexMode;
 
 	IDeckLinkDisplayMode*		displayMode = NULL;
 
@@ -275,7 +276,7 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-    printf("Audio capture started. Press Ctrl+C to stop.\n");
+    fprintf(stderr, "Audio capture started. Press Ctrl+C to stop.\n");
 	// All Okay.
 	exitStatus = 0;
 
