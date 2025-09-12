@@ -135,7 +135,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
             std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
 
             // Call the loudness calculation function
-            printf("%f\n",Momentary_loudness(leftWindow,rightWindow,48000));
+            printf("%f\n",Momentary_loudness(leftWindow,rightWindow,kAudioSampleRate));
 			//calculateLoudness(leftWindow, rightWindow);
 
             // Remove the first 100ms (slide the window)

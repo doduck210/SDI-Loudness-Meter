@@ -1,3 +1,13 @@
+# How to compile & run
+``` bash
+make
+./Capture -d 0 -m 11
+```
+-h for further instruction  
+briefly,  
+-d option is to select device  
+-m is selecting fps. -1 is autodetect.  
+
 
 ### SDI signal info
 * Audio : 48Khz pcm_s24le
