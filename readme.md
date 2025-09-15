@@ -7,7 +7,13 @@ make
 briefly,  
 -d option is to select device  
 -m is selecting fps. -1 is autodetect.  
-
+   
+To use Web GUI Interface : 
+``` bash
+npm install
+node server.js
+```
+http://localhost:8080
 
 ### SDI signal info
 * Audio : 48Khz pcm_s24le
