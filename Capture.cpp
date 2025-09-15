@@ -46,11 +46,28 @@
 #include <fcntl.h>
 #include <csignal>
 #include <vector>
+#include <numeric>
 
 #include "DeckLinkAPI.h"
 #include "Capture.h"
 #include "Config.h"
 #include "LKFS.h"
+
+extern "C" {
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/opt.h>
+#include <libavutil/pixfmt.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/frame.h>
+#include <libavutil/channel_layout.h>
+}
+
+// FFmpeg filter graph
+static AVFilterGraph*   g_filterGraph = NULL;
+static AVFilterContext* g_bufferSrcCtx = NULL;
+static AVFilterContext* g_bufferSinkCtx = NULL;
 
 // Audio processing globals
 std::vector<double> g_leftChannelPcm;
@@ -68,6 +85,90 @@ static bool				g_do_exit = false;
 static BMDConfig			g_config;
 
 static IDeckLinkInput*		g_deckLinkInput = NULL;
+
+static void stream_ppm(AVFrame *pFrame) {
+    // Write PPM header and binary pixel data to stdout
+    fprintf(stdout, "P6\n%d %d\n255\n", pFrame->width, pFrame->height);
+    for (int y = 0; y < pFrame->height; y++) {
+        fwrite(pFrame->data[0] + y * pFrame->linesize[0], 1, pFrame->width * 3, stdout);
+    }
+    fflush(stdout);
+}
+
+static int init_filter_graph() {
+    char args[512];
+    int ret;
+
+    const AVFilter *abuffersrc  = avfilter_get_by_name("abuffer");
+    const AVFilter *avectorscope = avfilter_get_by_name("avectorscope");
+    const AVFilter *format      = avfilter_get_by_name("format");
+    const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+
+    AVFilterContext* avectorscope_ctx;
+    AVFilterContext* format_ctx;
+
+    g_filterGraph = avfilter_graph_alloc();
+    if (!g_filterGraph) {
+        fprintf(stderr, "Cannot allocate filter graph\n");
+        return -1;
+    }
+
+    snprintf(args, sizeof(args), "time_base=1/%d:sample_rate=%d:sample_fmt=%s:channel_layout=stereo",
+             kAudioSampleRate, kAudioSampleRate, av_get_sample_fmt_name(AV_SAMPLE_FMT_FLTP));
+    ret = avfilter_graph_create_filter(&g_bufferSrcCtx, abuffersrc, "in", args, NULL, g_filterGraph);
+    if (ret < 0) {
+        fprintf(stderr, "Cannot create audio buffer source\n");
+        return ret;
+    }
+
+    ret = avfilter_graph_create_filter(&avectorscope_ctx, avectorscope, "avectorscope", NULL, NULL, g_filterGraph);
+    if (ret < 0) {
+        fprintf(stderr, "Cannot create avectorscope filter\n");
+        return ret;
+    }
+    av_opt_set_int(avectorscope_ctx, "mode", 1, 0); // Use 1 for lissajous_xy
+
+    snprintf(args, sizeof(args), "pix_fmts=%s", av_get_pix_fmt_name(AV_PIX_FMT_RGB24));
+    ret = avfilter_graph_create_filter(&format_ctx, format, "format", args, NULL, g_filterGraph);
+    if (ret < 0) {
+        fprintf(stderr, "Cannot create format filter\n");
+        return ret;
+    }
+
+    ret = avfilter_graph_create_filter(&g_bufferSinkCtx, buffersink, "out", NULL, NULL, g_filterGraph);
+    if (ret < 0) {
+        fprintf(stderr, "Cannot create video buffer sink\n");
+        return ret;
+    }
+
+    if ((ret = avfilter_link(g_bufferSrcCtx, 0, avectorscope_ctx, 0)) < 0) {
+        fprintf(stderr, "Error linking abuffer to avectorscope: %d\n", ret);
+        return ret;
+    }
+    if ((ret = avfilter_link(avectorscope_ctx, 0, format_ctx, 0)) < 0) {
+        fprintf(stderr, "Error linking avectorscope to format: %d\n", ret);
+        return ret;
+    }
+    if ((ret = avfilter_link(format_ctx, 0, g_bufferSinkCtx, 0)) < 0) {
+        fprintf(stderr, "Error linking format to buffersink: %d\n", ret);
+        return ret;
+    }
+
+    if ((ret = avfilter_graph_config(g_filterGraph, NULL)) < 0) {
+        fprintf(stderr, "Error configuring the filter graph: %d\n", ret);
+        return ret;
+    }
+
+    return 0;
+}
+
+
+
+static void cleanup_filter_graph() {
+    if (g_filterGraph) {
+        avfilter_graph_free(&g_filterGraph);
+    }
+}
 
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate() :
 	m_refCount(1)
@@ -94,18 +195,17 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 {
 	(void)videoFrame; // Video frames are ignored, but used for timing
 
-	// Handle Audio Frame
 	if (audioFrame)
 	{
         void* audioFrameBytes;
         audioFrame->GetBytes(&audioFrameBytes);
-        unsigned int sampleFrameCount = audioFrame->GetSampleFrameCount();
-        unsigned int channelCount = g_config.m_audioChannels;
-        unsigned int sampleDepth = g_config.m_audioSampleDepth;
+        const unsigned int sampleFrameCount = audioFrame->GetSampleFrameCount();
+        const unsigned int channelCount = g_config.m_audioChannels;
+        const unsigned int sampleDepth = g_config.m_audioSampleDepth;
 
-        // We assume stereo audio (2 channels) for L/R separation
         if (channelCount == 2)
         {
+            // 1. Append new samples to global buffers ONCE.
             if (sampleDepth == 32)
             {
                 int32_t* pcmData = (int32_t*)audioFrameBytes;
@@ -124,33 +224,62 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     g_rightChannelPcm.push_back((double)pcmData[i * 2 + 1] / 32768.0);
                 }
             }
-        }
-        // Note: Non-stereo audio is not handled by this logic.
 
-        // While we have enough data for a 400ms window in both channels
-        while (g_leftChannelPcm.size() >= kWindowSizeInSamples && g_rightChannelPcm.size() >= kWindowSizeInSamples)
-        {
-            // Create vectors for the 400ms window
-            std::vector<double> leftWindow(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kWindowSizeInSamples);
-            std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
+            // 2. Immediate vectorscope from the TAIL of the global buffers
+            if (sampleFrameCount > 0)
+            {
+                // Create float vectors from the last 'sampleFrameCount' samples
+                std::vector<float> leftChunk(g_leftChannelPcm.end() - sampleFrameCount, g_leftChannelPcm.end());
+                std::vector<float> rightChunk(g_rightChannelPcm.end() - sampleFrameCount, g_rightChannelPcm.end());
 
-            // Call the loudness calculation function
-            printf("%f\n",Momentary_loudness(leftWindow,rightWindow,kAudioSampleRate));
-            fflush(stdout); // Force flush the output buffer to stdout
-			//calculateLoudness(leftWindow, rightWindow);
+                AVFrame *scope_frame = av_frame_alloc();
+                if (scope_frame) {
+                    scope_frame->sample_rate    = kAudioSampleRate;
+                    scope_frame->format         = AV_SAMPLE_FMT_FLTP;
+                    scope_frame->channel_layout = AV_CH_LAYOUT_STEREO;
+                    scope_frame->nb_samples     = sampleFrameCount;
 
-            // Remove the first 100ms (slide the window)
-            g_leftChannelPcm.erase(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kSlideSizeInSamples);
-            g_rightChannelPcm.erase(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kSlideSizeInSamples);
+                    if (av_frame_get_buffer(scope_frame, 0) == 0) {
+                        memcpy(scope_frame->data[0], leftChunk.data(), sampleFrameCount * sizeof(float));
+                        memcpy(scope_frame->data[1], rightChunk.data(), sampleFrameCount * sizeof(float));
+
+                        if (av_buffersrc_add_frame_flags(g_bufferSrcCtx, scope_frame, AV_BUFFERSRC_FLAG_KEEP_REF) >= 0) {
+                            AVFrame *filt_frame = av_frame_alloc();
+                            while (av_buffersink_get_frame(g_bufferSinkCtx, filt_frame) >= 0) {
+                                if(filt_frame->width > 0) {
+                                    stream_ppm(filt_frame);
+                                }
+                                av_frame_unref(filt_frame);
+                            }
+                            av_frame_free(&filt_frame);
+                        }
+                    }
+                    av_frame_free(&scope_frame);
+                }
+            }
+
+            // 3. Accumulated loudness calculation (no changes here)
+            {
+                while (g_leftChannelPcm.size() >= kWindowSizeInSamples)
+                {
+                    std::vector<double> leftWindow(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kWindowSizeInSamples);
+                    std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
+
+                    fprintf(stderr, "%f\n", Momentary_loudness(leftWindow, rightWindow, kAudioSampleRate));
+                    fflush(stderr);
+
+                    g_leftChannelPcm.erase(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kSlideSizeInSamples);
+                    g_rightChannelPcm.erase(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kSlideSizeInSamples);
+                }
+            }
         }
 	}
-
 	return S_OK;
 }
 
+
 HRESULT DeckLinkCaptureDelegate::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents /*events*/, IDeckLinkDisplayMode* /*mode*/, BMDDetectedVideoInputFormatFlags /*formatFlags*/)
 {
-	// This callback is for video format changes, which we are ignoring.
 	return S_OK;
 }
 
@@ -167,11 +296,11 @@ int main(int argc, char *argv[])
 	HRESULT						result;
 	int							exitStatus = 1;
 
-	IDeckLinkIterator*		deckLinkIterator = NULL;
-	IDeckLink*				deckLink = NULL;
+	IDeckLinkIterator*			deckLinkIterator = NULL;
+	IDeckLink*					deckLink = NULL;
 
 	IDeckLinkProfileAttributes*	deckLinkAttributes = NULL;
-	int64_t					duplexMode;
+	int64_t						duplexMode;
 
 	IDeckLinkDisplayMode*		displayMode = NULL;
 
@@ -184,14 +313,17 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, sigfunc);
 	signal(SIGHUP, sigfunc);
 
-	// Process the command line arguments
 	if (!g_config.ParseArguments(argc, argv))
 	{
 		g_config.DisplayUsage(exitStatus);
 		goto bail;
 	}
 
-	// Get the DeckLink device
+    if (init_filter_graph() < 0) {
+        fprintf(stderr, "Failed to initialize filter graph\n");
+        goto bail;
+    }
+
 	deckLink = g_config.GetSelectedDeckLink();
 	if (deckLink == NULL)
 	{
@@ -199,7 +331,6 @@ int main(int argc, char *argv[])
 		goto bail;
 	}
 
-	// Get the input (capture) interface of the DeckLink device
 	result = deckLink->QueryInterface(IID_IDeckLinkInput, (void**)&g_deckLinkInput);
 	if (result != S_OK)
 	{
@@ -207,7 +338,6 @@ int main(int argc, char *argv[])
 		goto bail;
 	}
 
-	// Check the DeckLink device is active
 	result = deckLink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&deckLinkAttributes);
 	if (result != S_OK)
 	{
@@ -221,7 +351,6 @@ int main(int argc, char *argv[])
 		goto bail;
 	}
 
-	// Enable automatic video format detection to drive the capture clock
     bool formatDetectionSupported;
     result = deckLinkAttributes->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &formatDetectionSupported);
     if (result == S_OK && formatDetectionSupported)
@@ -229,7 +358,6 @@ int main(int argc, char *argv[])
         g_config.m_inputFlags |= bmdVideoInputEnableFormatDetection;
     }
 
-    // Get a display mode to start with. If format detection is enabled, the SDK will switch to the detected format.
     displayMode = g_config.GetSelectedDeckLinkDisplayMode(deckLink);
     if (displayMode == NULL)
     {
@@ -237,11 +365,9 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-	// Configure the capture callback
 	delegate = new DeckLinkCaptureDelegate();
 	g_deckLinkInput->SetCallback(delegate);
 
-	// Open audio output file (if specified)
 	if (g_config.m_audioOutputFile != NULL)
 	{
 		g_audioOutputFile = open(g_config.m_audioOutputFile, O_WRONLY|O_CREAT|O_TRUNC, 0664);
@@ -252,7 +378,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-    // Enable video input to act as a capture clock. We use a simple format to minimize resources.
     result = g_deckLinkInput->EnableVideoInput(displayMode->GetDisplayMode(), bmdFormat8BitYUV, g_config.m_inputFlags);
     if (result != S_OK)
     {
@@ -260,7 +385,6 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-    // Enable audio input
     result = g_deckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz, g_config.m_audioSampleDepth, g_config.m_audioChannels);
     if (result != S_OK)
     {
@@ -268,7 +392,6 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-    // Start capturing
     result = g_deckLinkInput->StartStreams();
     if (result != S_OK)
     {
@@ -276,11 +399,9 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-    fprintf(stderr, "Audio capture started. Press Ctrl+C to stop.\n");
-	// All Okay.
+    fprintf(stderr, "Audio capture started. A 'vectorscope_output.ppm' file will be generated. Press Ctrl+C to stop.\n");
 	exitStatus = 0;
 
-	// Block main thread until signal occurs
 	pthread_mutex_lock(&g_sleepMutex);
 	pthread_cond_wait(&g_sleepCond, &g_sleepMutex);
 	pthread_mutex_unlock(&g_sleepMutex);
@@ -292,6 +413,8 @@ int main(int argc, char *argv[])
 
 
 bail:
+    cleanup_filter_graph();
+
 	if (g_audioOutputFile != 0)
 		close(g_audioOutputFile);
 

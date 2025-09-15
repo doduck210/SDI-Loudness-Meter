@@ -1,4 +1,12 @@
 # How to compile & run
+
+### requirements
+``` shell
+# ffmpeg libraries for graphs
+sudo apt-get install libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev
+```
+* decklink driver (desktop video)
+
 ``` bash
 make
 ./Capture -d 0 -m 11
@@ -13,7 +21,8 @@ To use Web GUI Interface :
 npm install
 node server.js
 ```
-http://localhost:8080
+http://localhost:8080  
+
 
 ### SDI signal info
 * Audio : 48Khz pcm_s24le

@@ -40,7 +40,7 @@
 CC=g++
 SDK_PATH=./include
 CFLAGS=-Wno-multichar -I $(SDK_PATH) -fno-rtti
-LDFLAGS=-lm -ldl -lpthread
+LDFLAGS=-lm -ldl -lpthread -lavfilter -lavformat -lavdevice -lavutil
 
 Capture: Capture.cpp Config.cpp $(SDK_PATH)/DeckLinkAPIDispatch.cpp
 	$(CC) -o Capture Capture.cpp Config.cpp $(SDK_PATH)/DeckLinkAPIDispatch.cpp $(CFLAGS) $(LDFLAGS)
