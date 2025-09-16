@@ -194,6 +194,59 @@ double Momentary_loudness(vector<double> &left, vector<double>&right, double fs)
     return l;
 }
 
+/*===================ShorTerm_loudness func. Stereo overload====================*/
+//Handling PCM data directly (not wav file)
+//only suppport 48khz, 3s (144,000 data size)
+double ShorTerm_loudness(vector<double> &left, vector<double>&right, double fs) {
+    /*========================data normalize & copy========================*/
+    size_t len = 144000;
+    vector<double> G = {1.0, 1.0};
+    
+    /*========================calculate z========================*/
+    double T_g = 3.0;
+    double overlap = 0.75, step = 1 - overlap;
+    double T = len / fs;
+    vector<unsigned> j_range = linspace(unsigned(0), unsigned(round((T-T_g)/(T_g*step))), round((T-T_g)/(T_g*step))+1);
+    
+    vector<double> z_left(j_range.size(), 0.0);
+    vector<double> z_right(j_range.size(), 0.0);
+    calculate_z(left, fs, len, j_range, z_left);
+    calculate_z(right, fs, len, j_range, z_right);
+    
+    // left.clear(); right.clear(); // release unused vector
+    
+    /*========================loudness========================*/
+    double l;
+    l = -0.691 + 10.0*log10(G[0]*z_left[0]+G[1]*z_right[0]);
+    
+    return l;
+}
+
+/*===================intergrated_loudness_with_momentaries func. Stereo overload====================*/
+// get I-LKFS with M-LKFS 
+// so only gatings are implemented
+double integrate_loudness_with_momentaries(vector<double> momentaries, double fs) {
+    vector<double> z_sum(momentaries.size());
+    for(size_t i = 0; i < momentaries.size(); ++i) {
+        // z_sum[i] = z_left[i] + z_right[i]
+        z_sum[i] = pow(10, (momentaries[i] + 0.691) / 10.0);
+    }
+    /*========================threshold========================*/
+    // throw out anything below absolute threshold:
+    double Gamma_a = -70.0;
+    double z_sum_avg = 0.0;
+    z_sum_avg = throw_and_mean(Gamma_a, momentaries, z_sum);
+    double Gamma_r = -0.691 + 10.0*log10(z_sum_avg) - 10.0;
+    //if relative threshold is under absolute, just return the abs gated result
+    if(Gamma_r<Gamma_a) return Gamma_r+10.0;
+    
+    // throw out anything below relative threshold:
+    z_sum_avg = throw_and_mean(Gamma_r, momentaries, z_sum);
+    double L_KG = -0.691 + 10.0*log10(z_sum_avg);
+
+    return L_KG;
+}
+
 /*===================intergrated_loudness func. Mono overload====================*/
 double integrated_loudness(Mono_Wav &wav, double fs) {
     /*========================data normalize & copy========================*/
