@@ -1,16 +1,21 @@
 {
   "name": "sdiloudnessmeter",
   "version": "1.0.0",
-  "description": "``` bash make ./Capture -d 0 -m 11 ``` -h for further instruction   briefly,   -d option is to select device   -m is selecting fps. -1 is autodetect.",
+  "description": "A web-based SDI loudness meter and vectorscope, using a C++ backend for signal processing and a Node.js server for the web interface.",
   "main": "server.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
+  "keywords": [
+    "sdi",
+    "loudness",
+    "meter",
+    "vectorscope",
+    "blackmagic",
+    "webaudio",
+    "mjpeg"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

@@ -6,3 +6,6 @@
 /Capture
 *.o
 *.d
+
+# Editor-specific files
+/.vscode/

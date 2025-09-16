@@ -13,7 +13,7 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
 
 *   A system with a C++ compiler (like g++), `make`, and `git`.
 *   A Blackmagic DeckLink capture card.
-*   [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/developer/product/desktop-video) installed.
+*   Blackmagic decklink driver (desktopvideo) installed.
 *   FFmpeg libraries (development headers).
 *   Node.js and npm for the web interface.
 *   Asio and WebSocket++ libraries.
@@ -33,10 +33,6 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
         ```bash
         sudo apt-get update
         sudo apt-get install libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev
-        ```
-        *On macOS (using Homebrew):*
-        ```bash
-        brew install ffmpeg
         ```
 
     *   **Third-party Libraries (Asio & WebSocket++)**:
@@ -95,7 +91,7 @@ make
 
 *   **Tested SDI Signal Info**:
     *   Audio: 48kHz PCM 24-bit Little Endian (pcm_s24le)
-    *   Video: 59.94i 1920x1080 (video is used for timing only)
+    *   Video: 59.94i 1920x1080 (video is used for timing only tho)
 
 *   **Tested Environment**:
     *   OS: Ubuntu 22.04.5 LTS

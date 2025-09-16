@@ -46,6 +46,7 @@
 #include <fcntl.h>
 #include <csignal>
 #include <vector>
+#include <deque>
 #include <numeric>
 #include <sstream>
 
@@ -134,8 +135,9 @@ static AVFilterContext* g_bufferSrcCtx = NULL;
 static AVFilterContext* g_bufferSinkCtx = NULL;
 
 // Audio processing globals
-std::vector<double> g_leftChannelPcm;
-std::vector<double> g_rightChannelPcm;
+std::deque<double> g_leftChannelPcm;
+std::deque<double> g_rightChannelPcm;
+
 
 const int kAudioSampleRate = 48000;
 const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
@@ -143,7 +145,6 @@ const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
 
 static pthread_mutex_t	 g_sleepMutex;
 static pthread_cond_t	 g_sleepCond;
-static int		 g_audioOutputFile = -1;
 
 static BMDConfig		 g_config;
 
@@ -346,8 +347,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     oss << "{\"type\": \"lkfs\", \"value\": " << lkfs << "}";
                     send_ws_message(oss.str());
 
-                    g_leftChannelPcm.erase(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kSlideSizeInSamples);
-                    g_rightChannelPcm.erase(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kSlideSizeInSamples);
+                    for (unsigned int i = 0; i < kSlideSizeInSamples; ++i)
+                    {
+                        g_leftChannelPcm.pop_front();
+                        g_rightChannelPcm.pop_front();
+                    }
                 }
             }
         }
@@ -480,16 +484,6 @@ int main(int argc, char *argv[])
 	delegate = new DeckLinkCaptureDelegate();
 	g_deckLinkInput->SetCallback(delegate);
 
-	if (g_config.m_audioOutputFile != NULL)
-	{
-		g_audioOutputFile = open(g_config.m_audioOutputFile, O_WRONLY|O_CREAT|O_TRUNC, 0664);
-		if (g_audioOutputFile < 0)
-		{
-			fprintf(stderr, "Could not open audio output file \"%s\"\n", g_config.m_audioOutputFile);
-			goto bail;
-		}
-	}
-
     result = g_deckLinkInput->EnableVideoInput(displayMode->GetDisplayMode(), bmdFormat8BitYUV, g_config.m_inputFlags);
     if (result != S_OK)
     {
@@ -540,9 +534,6 @@ bail:
     }
 
     cleanup_filter_graph();
-
-	if (g_audioOutputFile != 0)
-		close(g_audioOutputFile);
 
 	if (displayMode != NULL)
 		displayMode->Release();
