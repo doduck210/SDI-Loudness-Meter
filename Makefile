@@ -39,7 +39,9 @@
 
 CC=g++
 SDK_PATH=./include
-CFLAGS=-Wno-multichar -I $(SDK_PATH) -fno-rtti
+WEBSOCKETPP_PATH=./libs/websocketpp
+ASIO_PATH=./libs/asio-1.28.1
+CFLAGS=-Wno-multichar -I$(SDK_PATH) -I$(WEBSOCKETPP_PATH) -I$(ASIO_PATH)/include -DASIO_STANDALONE
 LDFLAGS=-lm -ldl -lpthread -lavfilter -lavformat -lavdevice -lavutil
 
 Capture: Capture.cpp Config.cpp $(SDK_PATH)/DeckLinkAPIDispatch.cpp

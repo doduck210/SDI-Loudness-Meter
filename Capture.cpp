@@ -47,11 +47,16 @@
 #include <csignal>
 #include <vector>
 #include <numeric>
+#include <sstream>
+
+#include <websocketpp/config/asio_no_tls_client.hpp>
+#include <websocketpp/client.hpp>
 
 #include "DeckLinkAPI.h"
 #include "Capture.h"
 #include "Config.h"
 #include "LKFS.h"
+#include "base64.h"
 
 extern "C" {
 #include <libavfilter/avfilter.h>
@@ -63,6 +68,65 @@ extern "C" {
 #include <libavutil/frame.h>
 #include <libavutil/channel_layout.h>
 }
+
+// WebSocket client
+typedef websocketpp::client<websocketpp::config::asio_client> client;
+using websocketpp::lib::bind;
+using websocketpp::lib::placeholders::_1;
+
+static client g_ws_client;
+static websocketpp::connection_hdl g_ws_hdl;
+static bool g_ws_connected = false;
+static pthread_mutex_t g_ws_mutex;
+static pthread_t g_ws_thread;
+static std::string g_ws_uri = "ws://127.0.0.1:8080";
+static bool g_ws_started = false;
+static bool		 g_do_exit = false;
+
+void* ws_thread_func(void* /*arg*/)
+{
+    try {
+        g_ws_client.run();
+    } catch (const std::exception & e) {
+        fprintf(stderr, "WebSocket thread exception: %s\n", e.what());
+    } catch (websocketpp::lib::error_code e) {
+        fprintf(stderr, "WebSocket thread error: %s\n", e.message().c_str());
+    } catch (...) {
+        fprintf(stderr, "WebSocket thread unknown exception.\n");
+    }
+    return NULL;
+}
+
+void send_ws_message(const std::string& msg) {
+    if (g_do_exit) return;
+    pthread_mutex_lock(&g_ws_mutex);
+    if (g_ws_connected) {
+        websocketpp::lib::error_code ec;
+        g_ws_client.send(g_ws_hdl, msg, websocketpp::frame::opcode::text, ec);
+        if (ec) {
+            fprintf(stderr, "WebSocket send failed: %s\n", ec.message().c_str());
+        }
+    }
+    pthread_mutex_unlock(&g_ws_mutex);
+}
+
+void on_ws_open(client* c, websocketpp::connection_hdl hdl) {
+    pthread_mutex_lock(&g_ws_mutex);
+    g_ws_connected = true;
+    g_ws_hdl = hdl;
+    pthread_mutex_unlock(&g_ws_mutex);
+    fprintf(stderr, "WebSocket connection opened.\n");
+    fflush(stderr);
+}
+
+void on_ws_close(client* c, websocketpp::connection_hdl hdl) {
+    pthread_mutex_lock(&g_ws_mutex);
+    g_ws_connected = false;
+    pthread_mutex_unlock(&g_ws_mutex);
+    fprintf(stderr, "WebSocket connection closed.\n");
+    fflush(stderr);
+}
+
 
 // FFmpeg filter graph
 static AVFilterGraph*   g_filterGraph = NULL;
@@ -77,22 +141,34 @@ const int kAudioSampleRate = 48000;
 const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
 const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
 
-static pthread_mutex_t	g_sleepMutex;
-static pthread_cond_t	g_sleepCond;
-static int				g_audioOutputFile = -1;
-static bool				g_do_exit = false;
+static pthread_mutex_t	 g_sleepMutex;
+static pthread_cond_t	 g_sleepCond;
+static int		 g_audioOutputFile = -1;
 
-static BMDConfig			g_config;
+static BMDConfig		 g_config;
 
-static IDeckLinkInput*		g_deckLinkInput = NULL;
+static IDeckLinkInput*		 g_deckLinkInput = NULL;
 
-static void stream_ppm(AVFrame *pFrame) {
-    // Write PPM header and binary pixel data to stdout
-    fprintf(stdout, "P6\n%d %d\n255\n", pFrame->width, pFrame->height);
+static void send_vectorscope_ws(AVFrame *pFrame) {
+    // Create PPM header in memory
+    std::stringstream ppm_stream;
+    ppm_stream << "P6\n" << pFrame->width << " " << pFrame->height << "\n255\n";
+
+    // Write pixel data to the stream
     for (int y = 0; y < pFrame->height; y++) {
-        fwrite(pFrame->data[0] + y * pFrame->linesize[0], 1, pFrame->width * 3, stdout);
+        ppm_stream.write((char*)pFrame->data[0] + y * pFrame->linesize[0], pFrame->width * 3);
     }
-    fflush(stdout);
+
+    // Get the string from the stream
+    std::string ppm_string = ppm_stream.str();
+
+    // Base64 encode
+    std::string encoded_data = base64_encode(reinterpret_cast<const unsigned char*>(ppm_string.c_str()), ppm_string.length());
+
+    // Send via WebSocket
+    std::ostringstream oss;
+    oss << "{\"type\": \"vectorscope\", \"data\": \"" << encoded_data << "\"}";
+    send_ws_message(oss.str());
 }
 
 static int init_filter_graph() {
@@ -247,7 +323,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                             AVFrame *filt_frame = av_frame_alloc();
                             while (av_buffersink_get_frame(g_bufferSinkCtx, filt_frame) >= 0) {
                                 if(filt_frame->width > 0) {
-                                    stream_ppm(filt_frame);
+                                    send_vectorscope_ws(filt_frame);
                                 }
                                 av_frame_unref(filt_frame);
                             }
@@ -258,15 +334,17 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 }
             }
 
-            // 3. Accumulated loudness calculation (no changes here)
+            // 3. Accumulated loudness calculation
             {
                 while (g_leftChannelPcm.size() >= kWindowSizeInSamples)
                 {
                     std::vector<double> leftWindow(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kWindowSizeInSamples);
                     std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
 
-                    fprintf(stderr, "%f\n", Momentary_loudness(leftWindow, rightWindow, kAudioSampleRate));
-                    fflush(stderr);
+                    double lkfs = Momentary_loudness(leftWindow, rightWindow, kAudioSampleRate);
+                    std::ostringstream oss;
+                    oss << "{\"type\": \"lkfs\", \"value\": " << lkfs << "}";
+                    send_ws_message(oss.str());
 
                     g_leftChannelPcm.erase(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kSlideSizeInSamples);
                     g_rightChannelPcm.erase(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kSlideSizeInSamples);
@@ -293,21 +371,22 @@ static void sigfunc(int signum)
 
 int main(int argc, char *argv[])
 {
-	HRESULT						result;
-	int							exitStatus = 1;
+	HRESULT			 result;
+	int			 exitStatus = 1;
 
-	IDeckLinkIterator*			deckLinkIterator = NULL;
-	IDeckLink*					deckLink = NULL;
+	IDeckLinkIterator*		 deckLinkIterator = NULL;
+	IDeckLink*			 deckLink = NULL;
 
-	IDeckLinkProfileAttributes*	deckLinkAttributes = NULL;
-	int64_t						duplexMode;
+	IDeckLinkProfileAttributes*	 deckLinkAttributes = NULL;
+	int64_t			 duplexMode;
 
-	IDeckLinkDisplayMode*		displayMode = NULL;
+	IDeckLinkDisplayMode*		 displayMode = NULL;
 
-	DeckLinkCaptureDelegate*		delegate = NULL;
+	DeckLinkCaptureDelegate*		 delegate = NULL;
 
 	pthread_mutex_init(&g_sleepMutex, NULL);
 	pthread_cond_init(&g_sleepCond, NULL);
+	pthread_mutex_init(&g_ws_mutex, NULL);
 
 	signal(SIGINT, sigfunc);
 	signal(SIGTERM, sigfunc);
@@ -319,10 +398,43 @@ int main(int argc, char *argv[])
 		goto bail;
 	}
 
-    if (init_filter_graph() < 0) {
-        fprintf(stderr, "Failed to initialize filter graph\n");
+    // WebSocket client setup
+    try {
+        g_ws_client.clear_access_channels(websocketpp::log::alevel::all);
+        g_ws_client.set_access_channels(websocketpp::log::alevel::connect | websocketpp::log::alevel::disconnect);
+        g_ws_client.set_error_channels(websocketpp::log::elevel::all);
+        g_ws_client.init_asio();
+
+        g_ws_client.set_open_handler(bind(&on_ws_open, &g_ws_client, ::_1));
+        g_ws_client.set_close_handler(bind(&on_ws_close, &g_ws_client, ::_1));
+
+        websocketpp::lib::error_code ec;
+        client::connection_ptr con = g_ws_client.get_connection(g_ws_uri, ec);
+        if (ec) {
+            fprintf(stderr, "Could not create connection: %s\n", ec.message().c_str());
+            goto bail;
+        }
+
+        g_ws_client.connect(con);
+
+        pthread_create(&g_ws_thread, NULL, ws_thread_func, NULL);
+        g_ws_started = true;
+
+    } catch (const std::exception & e) {
+        fprintf(stderr, "WebSocket setup exception: %s\n", e.what());
+        goto bail;
+    } catch (websocketpp::lib::error_code e) {
+        fprintf(stderr, "WebSocket setup error: %s\n", e.message().c_str());
+        goto bail;
+    } catch (...) {
+        fprintf(stderr, "WebSocket setup unknown exception.\n");
         goto bail;
     }
+
+	if (init_filter_graph() < 0) {
+		fprintf(stderr, "Failed to initialize filter graph\n");
+		goto bail;
+	}
 
 	deckLink = g_config.GetSelectedDeckLink();
 	if (deckLink == NULL)
@@ -399,7 +511,7 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-    fprintf(stderr, "Audio capture started. A 'vectorscope_output.ppm' file will be generated. Press Ctrl+C to stop.\n");
+    fprintf(stderr, "Audio capture started. Press Ctrl+C to stop.\n");
 	exitStatus = 0;
 
 	pthread_mutex_lock(&g_sleepMutex);
@@ -413,6 +525,20 @@ int main(int argc, char *argv[])
 
 
 bail:
+    if (g_ws_started) {
+        if (g_ws_connected) {
+            websocketpp::lib::error_code ec;
+            g_ws_client.close(g_ws_hdl, websocketpp::close::status::going_away, "", ec);
+            if (ec) {
+                fprintf(stderr, "Error closing WebSocket connection: %s\n", ec.message().c_str());
+            }
+        }
+        if (!g_ws_client.stopped()) {
+            g_ws_client.stop();
+        }
+        pthread_join(g_ws_thread, NULL);
+    }
+
     cleanup_filter_graph();
 
 	if (g_audioOutputFile != 0)

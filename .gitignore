@@ -1,5 +1,8 @@
 # Dependencies
 /node_modules
+/libs/
 
 # Build artifacts
 /Capture
+*.o
+*.d
