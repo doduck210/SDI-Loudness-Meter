@@ -57,18 +57,7 @@
 #include "Capture.h"
 #include "Config.h"
 #include "LKFS.h"
-#include "base64.h"
-
-extern "C" {
-#include <libavfilter/avfilter.h>
-#include <libavfilter/buffersink.h>
-#include <libavfilter/buffersrc.h>
-#include <libavutil/opt.h>
-#include <libavutil/pixfmt.h>
-#include <libavutil/pixdesc.h>
-#include <libavutil/frame.h>
-#include <libavutil/channel_layout.h>
-}
+#include "avectorscope_processor.h" // Renamed for clarity
 
 // WebSocket client
 typedef websocketpp::client<websocketpp::config::asio_client> client;
@@ -128,11 +117,8 @@ void on_ws_close(client* c, websocketpp::connection_hdl hdl) {
     fflush(stderr);
 }
 
-
-// FFmpeg filter graph
-static AVFilterGraph*   g_filterGraph = NULL;
-static AVFilterContext* g_bufferSrcCtx = NULL;
-static AVFilterContext* g_bufferSinkCtx = NULL;
+// FFmpeg-related globals are now encapsulated in AVectorscopeProcessor
+static AVectorscopeProcessor g_avectorscopeProcessor;
 
 // Audio processing globals
 std::deque<double> g_leftChannelPcm;
@@ -149,103 +135,6 @@ static pthread_cond_t	 g_sleepCond;
 static BMDConfig		 g_config;
 
 static IDeckLinkInput*		 g_deckLinkInput = NULL;
-
-static void send_vectorscope_ws(AVFrame *pFrame) {
-    // Create PPM header in memory
-    std::stringstream ppm_stream;
-    ppm_stream << "P6\n" << pFrame->width << " " << pFrame->height << "\n255\n";
-
-    // Write pixel data to the stream
-    for (int y = 0; y < pFrame->height; y++) {
-        ppm_stream.write((char*)pFrame->data[0] + y * pFrame->linesize[0], pFrame->width * 3);
-    }
-
-    // Get the string from the stream
-    std::string ppm_string = ppm_stream.str();
-
-    // Base64 encode
-    std::string encoded_data = base64_encode(reinterpret_cast<const unsigned char*>(ppm_string.c_str()), ppm_string.length());
-
-    // Send via WebSocket
-    std::ostringstream oss;
-    oss << "{\"type\": \"vectorscope\", \"data\": \"" << encoded_data << "\"}";
-    send_ws_message(oss.str());
-}
-
-static int init_filter_graph() {
-    char args[512];
-    int ret;
-
-    const AVFilter *abuffersrc  = avfilter_get_by_name("abuffer");
-    const AVFilter *avectorscope = avfilter_get_by_name("avectorscope");
-    const AVFilter *format      = avfilter_get_by_name("format");
-    const AVFilter *buffersink = avfilter_get_by_name("buffersink");
-
-    AVFilterContext* avectorscope_ctx;
-    AVFilterContext* format_ctx;
-
-    g_filterGraph = avfilter_graph_alloc();
-    if (!g_filterGraph) {
-        fprintf(stderr, "Cannot allocate filter graph\n");
-        return -1;
-    }
-
-    snprintf(args, sizeof(args), "time_base=1/%d:sample_rate=%d:sample_fmt=%s:channel_layout=stereo",
-             kAudioSampleRate, kAudioSampleRate, av_get_sample_fmt_name(AV_SAMPLE_FMT_FLTP));
-    ret = avfilter_graph_create_filter(&g_bufferSrcCtx, abuffersrc, "in", args, NULL, g_filterGraph);
-    if (ret < 0) {
-        fprintf(stderr, "Cannot create audio buffer source\n");
-        return ret;
-    }
-
-    ret = avfilter_graph_create_filter(&avectorscope_ctx, avectorscope, "avectorscope", NULL, NULL, g_filterGraph);
-    if (ret < 0) {
-        fprintf(stderr, "Cannot create avectorscope filter\n");
-        return ret;
-    }
-    av_opt_set_int(avectorscope_ctx, "mode", 1, 0); // Use 1 for lissajous_xy
-
-    snprintf(args, sizeof(args), "pix_fmts=%s", av_get_pix_fmt_name(AV_PIX_FMT_RGB24));
-    ret = avfilter_graph_create_filter(&format_ctx, format, "format", args, NULL, g_filterGraph);
-    if (ret < 0) {
-        fprintf(stderr, "Cannot create format filter\n");
-        return ret;
-    }
-
-    ret = avfilter_graph_create_filter(&g_bufferSinkCtx, buffersink, "out", NULL, NULL, g_filterGraph);
-    if (ret < 0) {
-        fprintf(stderr, "Cannot create video buffer sink\n");
-        return ret;
-    }
-
-    if ((ret = avfilter_link(g_bufferSrcCtx, 0, avectorscope_ctx, 0)) < 0) {
-        fprintf(stderr, "Error linking abuffer to avectorscope: %d\n", ret);
-        return ret;
-    }
-    if ((ret = avfilter_link(avectorscope_ctx, 0, format_ctx, 0)) < 0) {
-        fprintf(stderr, "Error linking avectorscope to format: %d\n", ret);
-        return ret;
-    }
-    if ((ret = avfilter_link(format_ctx, 0, g_bufferSinkCtx, 0)) < 0) {
-        fprintf(stderr, "Error linking format to buffersink: %d\n", ret);
-        return ret;
-    }
-
-    if ((ret = avfilter_graph_config(g_filterGraph, NULL)) < 0) {
-        fprintf(stderr, "Error configuring the filter graph: %d\n", ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-
-
-static void cleanup_filter_graph() {
-    if (g_filterGraph) {
-        avfilter_graph_free(&g_filterGraph);
-    }
-}
 
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate() :
 	m_refCount(1)
@@ -302,37 +191,20 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 }
             }
 
-            // 2. Immediate vectorscope from the TAIL of the global buffers
+            // 2. Immediate vectorscope processing (now simplified)
             if (sampleFrameCount > 0)
             {
                 // Create float vectors from the last 'sampleFrameCount' samples
                 std::vector<float> leftChunk(g_leftChannelPcm.end() - sampleFrameCount, g_leftChannelPcm.end());
                 std::vector<float> rightChunk(g_rightChannelPcm.end() - sampleFrameCount, g_rightChannelPcm.end());
 
-                AVFrame *scope_frame = av_frame_alloc();
-                if (scope_frame) {
-                    scope_frame->sample_rate    = kAudioSampleRate;
-                    scope_frame->format         = AV_SAMPLE_FMT_FLTP;
-                    scope_frame->channel_layout = AV_CH_LAYOUT_STEREO;
-                    scope_frame->nb_samples     = sampleFrameCount;
-
-                    if (av_frame_get_buffer(scope_frame, 0) == 0) {
-                        memcpy(scope_frame->data[0], leftChunk.data(), sampleFrameCount * sizeof(float));
-                        memcpy(scope_frame->data[1], rightChunk.data(), sampleFrameCount * sizeof(float));
-
-                        if (av_buffersrc_add_frame_flags(g_bufferSrcCtx, scope_frame, AV_BUFFERSRC_FLAG_KEEP_REF) >= 0) {
-                            AVFrame *filt_frame = av_frame_alloc();
-                            while (av_buffersink_get_frame(g_bufferSinkCtx, filt_frame) >= 0) {
-                                if(filt_frame->width > 0) {
-                                    send_vectorscope_ws(filt_frame);
-                                }
-                                av_frame_unref(filt_frame);
-                            }
-                            av_frame_free(&filt_frame);
-                        }
+                // Delegate processing to the AVectorscopeProcessor
+                g_avectorscopeProcessor.processAudio(leftChunk, rightChunk, sampleFrameCount,
+                    [](const std::string& msg) {
+                        // The processor invokes this callback with the final JSON message
+                        send_ws_message(msg);
                     }
-                    av_frame_free(&scope_frame);
-                }
+                );
             }
 
             // 3. Accumulated loudness calculation
@@ -368,7 +240,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFormatChanged(BMDVideoInputFormatChan
 static void sigfunc(int signum)
 {
 	if (signum == SIGINT || signum == SIGTERM)
-			g_do_exit = true;
+			 g_do_exit = true;
 
 	pthread_cond_signal(&g_sleepCond);
 }
@@ -435,8 +307,8 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-	if (init_filter_graph() < 0) {
-		fprintf(stderr, "Failed to initialize filter graph\n");
+	if (!g_avectorscopeProcessor.initialize()) {
+		fprintf(stderr, "Failed to initialize vectorscope processor\n");
 		goto bail;
 	}
 
@@ -533,28 +405,28 @@ bail:
         pthread_join(g_ws_thread, NULL);
     }
 
-    cleanup_filter_graph();
+    // cleanup_filter_graph() is no longer needed, the g_avectorscopeProcessor destructor handles it.
 
 	if (displayMode != NULL)
-		displayMode->Release();
+			displayMode->Release();
 
 	if (delegate != NULL)
-		delegate->Release();
+			delegate->Release();
 
 	if (g_deckLinkInput != NULL)
 	{
-		g_deckLinkInput->Release();
-		g_deckLinkInput = NULL;
+			g_deckLinkInput->Release();
+			g_deckLinkInput = NULL;
 	}
 
 	if (deckLinkAttributes != NULL)
-		deckLinkAttributes->Release();
+			deckLinkAttributes->Release();
 
 	if (deckLink != NULL)
-		deckLink->Release();
+			deckLink->Release();
 
 	if (deckLinkIterator != NULL)
-		deckLinkIterator->Release();
+			deckLinkIterator->Release();
 
 	return exitStatus;
 }
