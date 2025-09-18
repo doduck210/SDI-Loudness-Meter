@@ -5,6 +5,7 @@ const WebSocket = require('ws');
 const sharp = require('sharp');
 
 const mjpegClients = new Set();
+let isIntegrating = false;
 
 // 1. HTTP 서버 생성
 const server = http.createServer((req, res) => {
@@ -44,6 +45,7 @@ const wss = new WebSocket.Server({ server });
 
 wss.on('connection', ws => {
     console.log('WebSocket client connected');
+    ws.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
 
     ws.on('message', message => {
         try {
@@ -51,11 +53,23 @@ wss.on('connection', ws => {
 
             // Check for commands from the web client and forward them
             if (msg.command) {
+                if (msg.command === 'start_integration') {
+                    isIntegrating = true;
+                } else if (msg.command === 'stop_integration') {
+                    isIntegrating = false;
+                }
+
+                // Forward the command to C++ app (by broadcasting)
                 wss.clients.forEach(client => {
-                    // We only need to send this to the C++ app, but broadcasting is simpler
-                    // as browsers will just ignore the unknown command.
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify(msg));
+                    }
+                });
+
+                // Broadcast the new state to all web clients
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
                     }
                 });
             } else if (msg.type === 'lkfs') {

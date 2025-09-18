@@ -101,8 +101,7 @@
         <div class="widget-container">
             <h2>Integrated (I)</h2>
             <div class="level-meter control-buttons" style="background-color: transparent; border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                <button id="startIntegration">Start</button>
-                <button id="stopIntegration">Stop</button>
+                <button id="toggleIntegration">Start</button>
             </div>
             <div class="meter-value" id="integratedValue">-inf</div>
         </div>
@@ -119,8 +118,9 @@
         const meterValue = document.getElementById('meterValue');
         const shortTermValue = document.getElementById('shortTermValue');
         const integratedValue = document.getElementById('integratedValue');
-        const startBtn = document.getElementById('startIntegration');
-        const stopBtn = document.getElementById('stopIntegration');
+        const toggleBtn = document.getElementById('toggleIntegration');
+
+        let isIntegrating = false;
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
@@ -128,19 +128,26 @@
             console.log('Connected to WebSocket server');
         };
 
-        startBtn.onclick = () => {
-            ws.send(JSON.stringify({ command: 'start_integration' }));
-            console.log('Sent command: start_integration');
-        };
-
-        stopBtn.onclick = () => {
-            ws.send(JSON.stringify({ command: 'stop_integration' }));
-            console.log('Sent command: stop_integration');
+        toggleBtn.onclick = () => {
+            const command = isIntegrating ? 'stop_integration' : 'start_integration';
+            ws.send(JSON.stringify({ command: command }));
+            console.log('Sent command: ' + command);
         };
 
         ws.onmessage = event => {
             try {
                 const data = JSON.parse(event.data);
+
+                if (data.type === 'integration_state') {
+                    isIntegrating = data.is_integrating;
+                    if (isIntegrating) {
+                        toggleBtn.textContent = 'Stop';
+                        toggleBtn.style.backgroundColor = '#e74c3c';
+                    } else {
+                        toggleBtn.textContent = 'Start';
+                        toggleBtn.style.backgroundColor = '#34495e';
+                    }
+                }
 
                 // Momentary Loudness
                 if (data.loudness !== undefined) {
