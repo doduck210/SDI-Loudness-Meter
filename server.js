@@ -48,7 +48,17 @@ wss.on('connection', ws => {
     ws.on('message', message => {
         try {
             const msg = JSON.parse(message);
-            if (msg.type === 'lkfs') {
+
+            // Check for commands from the web client and forward them
+            if (msg.command) {
+                wss.clients.forEach(client => {
+                    // We only need to send this to the C++ app, but broadcasting is simpler
+                    // as browsers will just ignore the unknown command.
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify(msg));
+                    }
+                });
+            } else if (msg.type === 'lkfs') {
                 // LKFS 값을 모든 웹소켓 클라이언트에게 브로드캐스트 (C++ 클라이언트 포함)
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {

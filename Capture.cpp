@@ -62,7 +62,7 @@
 // WebSocket client
 typedef websocketpp::client<websocketpp::config::asio_client> client;
 using websocketpp::lib::bind;
-using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_1, websocketpp::lib::placeholders::_2;
 
 static client g_ws_client;
 static websocketpp::connection_hdl g_ws_hdl;
@@ -72,6 +72,23 @@ static pthread_t g_ws_thread;
 static std::string g_ws_uri = "ws://127.0.0.1:8080";
 static bool g_ws_started = false;
 static bool		 g_do_exit = false;
+static bool g_isIntegrating = false;
+
+// FFmpeg-related globals are now encapsulated in AVectorscopeProcessor
+static AVectorscopeProcessor g_avectorscopeProcessor;
+
+// Audio processing globals
+std::deque<double> g_leftChannelPcm;
+std::deque<double> g_rightChannelPcm;
+std::deque<double> g_shortTermLeftChannelPcm;
+std::deque<double> g_shortTermRightChannelPcm;
+std::vector<double> g_momentaryLoudnessHistory;
+
+
+const int kAudioSampleRate = 48000;
+const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
+const int kShortTermWindowSizeInSamples = kAudioSampleRate * 3; // 144000
+const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
 
 void* ws_thread_func(void* /*arg*/)
 {
@@ -117,21 +134,18 @@ void on_ws_close(client* c, websocketpp::connection_hdl hdl) {
     fflush(stderr);
 }
 
-// FFmpeg-related globals are now encapsulated in AVectorscopeProcessor
-static AVectorscopeProcessor g_avectorscopeProcessor;
-
-// Audio processing globals
-std::deque<double> g_leftChannelPcm;
-std::deque<double> g_rightChannelPcm;
-std::deque<double> g_shortTermLeftChannelPcm;
-std::deque<double> g_shortTermRightChannelPcm;
-std::vector<double> g_momentaryLoudnessHistory;
-
-
-const int kAudioSampleRate = 48000;
-const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
-const int kShortTermWindowSizeInSamples = kAudioSampleRate * 3; // 144000
-const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
+void on_ws_message(client* c, websocketpp::connection_hdl hdl, client::message_ptr msg) {
+    std::string payload = msg->get_payload();
+    // A more robust check that is insensitive to whitespace around the colon
+    if (payload.find("\"command\"") != std::string::npos && payload.find("\"start_integration\"") != std::string::npos) {
+        fprintf(stderr, "Received start integration command.\n");
+        g_momentaryLoudnessHistory.clear();
+        g_isIntegrating = true;
+    } else if (payload.find("\"command\"") != std::string::npos && payload.find("\"stop_integration\"") != std::string::npos) {
+        fprintf(stderr, "Received stop integration command.\n");
+        g_isIntegrating = false;
+    }
+}
 
 static pthread_mutex_t	 g_sleepMutex;
 static pthread_cond_t	 g_sleepCond;
@@ -232,11 +246,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     send_ws_message(oss.str());
 
                     // Integrated Loudness (from all momentary values)
-                    g_momentaryLoudnessHistory.push_back(lkfs);
-                    double i_lkfs = integrated_loudness_with_momentaries(g_momentaryLoudnessHistory, kAudioSampleRate);
-                    std::ostringstream oss_i;
-                    oss_i << "{\"type\": \"i_lkfs\", \"value\": " << i_lkfs << "}";
-                    send_ws_message(oss_i.str());
+                    if(g_isIntegrating){
+                        g_momentaryLoudnessHistory.push_back(lkfs);
+                        double i_lkfs = integrated_loudness_with_momentaries(g_momentaryLoudnessHistory, kAudioSampleRate);
+                        std::ostringstream oss_i;
+                        oss_i << "{\"type\": \"i_lkfs\", \"value\": " << i_lkfs << "}";
+                        send_ws_message(oss_i.str());
+                    }
 
                     for (unsigned int i = 0; i < kSlideSizeInSamples; ++i)
                     {
@@ -322,6 +338,7 @@ int main(int argc, char *argv[])
 
         g_ws_client.set_open_handler(bind(&on_ws_open, &g_ws_client, ::_1));
         g_ws_client.set_close_handler(bind(&on_ws_close, &g_ws_client, ::_1));
+        g_ws_client.set_message_handler(bind(&on_ws_message, &g_ws_client, ::_1, ::_2));
 
         websocketpp::lib::error_code ec;
         client::connection_ptr con = g_ws_client.get_connection(g_ws_uri, ec);

@@ -18,12 +18,15 @@
         }
         .monitor-container {
             display: flex;
-            gap: 40px;
-            align-items: flex-start; /* Align items to the top */
+            gap: 20px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         .widget-container {
-            width: 300px;
+            width: 250px;
             text-align: center;
+            margin-bottom: 20px;
         }
         h1 {
             margin-bottom: 20px;
@@ -42,7 +45,7 @@
         }
         .meter-fill {
             height: 100%;
-            width: 0%; /* Start at 0% */
+            width: 0%;
             background-color: #27ae60;
             transition: width 0.1s linear;
             position: absolute;
@@ -55,8 +58,8 @@
             font-weight: bold;
         }
         .vectorscope-container {
-            width: 300px;
-            height: 300px;
+            width: 250px;
+            height: 250px;
             border: 2px solid #34495e;
             background-color: #000;
             box-sizing: border-box;
@@ -64,6 +67,19 @@
         .vectorscope-container img {
             width: 100%;
             height: 100%;
+        }
+        .control-buttons button {
+            background-color: #34495e;
+            color: #ecf0f1;
+            border: 1px solid #4a627a;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 5px;
+        }
+        .control-buttons button:hover {
+            background-color: #4a627a;
         }
     </style>
 </head>
@@ -84,7 +100,10 @@
         </div>
         <div class="widget-container">
             <h2>Integrated (I)</h2>
-            <div class="level-meter" style="background-color: transparent; border-color: transparent;"></div>
+            <div class="level-meter control-buttons" style="background-color: transparent; border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <button id="startIntegration">Start</button>
+                <button id="stopIntegration">Stop</button>
+            </div>
             <div class="meter-value" id="integratedValue">-inf</div>
         </div>
         <div class="widget-container">
@@ -100,11 +119,23 @@
         const meterValue = document.getElementById('meterValue');
         const shortTermValue = document.getElementById('shortTermValue');
         const integratedValue = document.getElementById('integratedValue');
+        const startBtn = document.getElementById('startIntegration');
+        const stopBtn = document.getElementById('stopIntegration');
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
         ws.onopen = () => {
             console.log('Connected to WebSocket server');
+        };
+
+        startBtn.onclick = () => {
+            ws.send(JSON.stringify({ command: 'start_integration' }));
+            console.log('Sent command: start_integration');
+        };
+
+        stopBtn.onclick = () => {
+            ws.send(JSON.stringify({ command: 'stop_integration' }));
+            console.log('Sent command: stop_integration');
         };
 
         ws.onmessage = event => {
