@@ -123,10 +123,14 @@ static AVectorscopeProcessor g_avectorscopeProcessor;
 // Audio processing globals
 std::deque<double> g_leftChannelPcm;
 std::deque<double> g_rightChannelPcm;
+std::deque<double> g_shortTermLeftChannelPcm;
+std::deque<double> g_shortTermRightChannelPcm;
+std::vector<double> g_momentaryLoudnessHistory;
 
 
 const int kAudioSampleRate = 48000;
 const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
+const int kShortTermWindowSizeInSamples = kAudioSampleRate * 3; // 144000
 const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
 
 static pthread_mutex_t	 g_sleepMutex;
@@ -177,8 +181,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 int32_t* pcmData = (int32_t*)audioFrameBytes;
                 for (unsigned int i = 0; i < sampleFrameCount; ++i)
                 {
-                    g_leftChannelPcm.push_back((double)pcmData[i * 2] / 2147483648.0);
-                    g_rightChannelPcm.push_back((double)pcmData[i * 2 + 1] / 2147483648.0);
+                    double leftSample = (double)pcmData[i * 2] / 2147483648.0;
+                    double rightSample = (double)pcmData[i * 2 + 1] / 2147483648.0;
+                    g_leftChannelPcm.push_back(leftSample);
+                    g_rightChannelPcm.push_back(rightSample);
+                    g_shortTermLeftChannelPcm.push_back(leftSample);
+                    g_shortTermRightChannelPcm.push_back(rightSample);
                 }
             }
             else if (sampleDepth == 16)
@@ -186,8 +194,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 int16_t* pcmData = (int16_t*)audioFrameBytes;
                 for (unsigned int i = 0; i < sampleFrameCount; ++i)
                 {
-                    g_leftChannelPcm.push_back((double)pcmData[i * 2] / 32768.0);
-                    g_rightChannelPcm.push_back((double)pcmData[i * 2 + 1] / 32768.0);
+                    double leftSample = (double)pcmData[i * 2] / 32768.0;
+                    double rightSample = (double)pcmData[i * 2 + 1] / 32768.0;
+                    g_leftChannelPcm.push_back(leftSample);
+                    g_rightChannelPcm.push_back(rightSample);
+                    g_shortTermLeftChannelPcm.push_back(leftSample);
+                    g_shortTermRightChannelPcm.push_back(rightSample);
                 }
             }
 
@@ -207,7 +219,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 );
             }
 
-            // 3. Accumulated loudness calculation
+            // 3. Momentary and Integrated loudness calculation
             {
                 while (g_leftChannelPcm.size() >= kWindowSizeInSamples)
                 {
@@ -219,10 +231,37 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     oss << "{\"type\": \"lkfs\", \"value\": " << lkfs << "}";
                     send_ws_message(oss.str());
 
+                    // Integrated Loudness (from all momentary values)
+                    g_momentaryLoudnessHistory.push_back(lkfs);
+                    double i_lkfs = integrated_loudness_with_momentaries(g_momentaryLoudnessHistory, kAudioSampleRate);
+                    std::ostringstream oss_i;
+                    oss_i << "{\"type\": \"i_lkfs\", \"value\": " << i_lkfs << "}";
+                    send_ws_message(oss_i.str());
+
                     for (unsigned int i = 0; i < kSlideSizeInSamples; ++i)
                     {
                         g_leftChannelPcm.pop_front();
                         g_rightChannelPcm.pop_front();
+                    }
+                }
+            }
+
+            // 4. Short-term loudness calculation
+            {
+                while (g_shortTermLeftChannelPcm.size() >= kShortTermWindowSizeInSamples)
+                {
+                    std::vector<double> leftWindow(g_shortTermLeftChannelPcm.begin(), g_shortTermLeftChannelPcm.begin() + kShortTermWindowSizeInSamples);
+                    std::vector<double> rightWindow(g_shortTermRightChannelPcm.begin(), g_shortTermRightChannelPcm.begin() + kShortTermWindowSizeInSamples);
+
+                    double s_lkfs = ShortTerm_loudness(leftWindow, rightWindow, kAudioSampleRate);
+                    std::ostringstream oss_s;
+                    oss_s << "{\"type\": \"s_lkfs\", \"value\": " << s_lkfs << "}";
+                    send_ws_message(oss_s.str());
+
+                    for (unsigned int i = 0; i < kSlideSizeInSamples; ++i)
+                    {
+                        g_shortTermLeftChannelPcm.pop_front();
+                        g_shortTermRightChannelPcm.pop_front();
                     }
                 }
             }
@@ -408,25 +447,25 @@ bail:
     // cleanup_filter_graph() is no longer needed, the g_avectorscopeProcessor destructor handles it.
 
 	if (displayMode != NULL)
-			displayMode->Release();
+					displayMode->Release();
 
 	if (delegate != NULL)
-			delegate->Release();
+						delegate->Release();
 
 	if (g_deckLinkInput != NULL)
 	{
-			g_deckLinkInput->Release();
-			g_deckLinkInput = NULL;
+							g_deckLinkInput->Release();
+							g_deckLinkInput = NULL;
 	}
 
 	if (deckLinkAttributes != NULL)
-			deckLinkAttributes->Release();
+								deckLinkAttributes->Release();
 
 	if (deckLink != NULL)
-			deckLink->Release();
+								deckLink->Release();
 
 	if (deckLinkIterator != NULL)
-			deckLinkIterator->Release();
+								deckLinkIterator->Release();
 
 	return exitStatus;
 }

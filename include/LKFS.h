@@ -194,10 +194,10 @@ double Momentary_loudness(vector<double> &left, vector<double>&right, double fs)
     return l;
 }
 
-/*===================ShorTerm_loudness func. Stereo overload====================*/
+/*===================ShortTerm_loudness func. Stereo overload====================*/
 //Handling PCM data directly (not wav file)
 //only suppport 48khz, 3s (144,000 data size)
-double ShorTerm_loudness(vector<double> &left, vector<double>&right, double fs) {
+double ShortTerm_loudness(vector<double> &left, vector<double>&right, double fs) {
     /*========================data normalize & copy========================*/
     size_t len = 144000;
     vector<double> G = {1.0, 1.0};
@@ -225,7 +225,7 @@ double ShorTerm_loudness(vector<double> &left, vector<double>&right, double fs) 
 /*===================intergrated_loudness_with_momentaries func. Stereo overload====================*/
 // get I-LKFS with M-LKFS 
 // so only gatings are implemented
-double integrate_loudness_with_momentaries(vector<double> momentaries, double fs) {
+double integrated_loudness_with_momentaries(vector<double> momentaries, double fs) {
     vector<double> z_sum(momentaries.size());
     for(size_t i = 0; i < momentaries.size(); ++i) {
         // z_sum[i] = z_left[i] + z_right[i]

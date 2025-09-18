@@ -71,11 +71,21 @@
     <h1>SDI Audio Monitor</h1>
     <div class="monitor-container">
         <div class="widget-container">
-            <h2>Loudness Meter (LKFS)</h2>
+            <h2>Momentary (M)</h2>
             <div class="level-meter">
                 <div class="meter-fill" id="meterFill"></div>
             </div>
             <div class="meter-value" id="meterValue">-inf</div>
+        </div>
+        <div class="widget-container">
+            <h2>Short-term (S)</h2>
+            <div class="level-meter" style="background-color: transparent; border-color: transparent;"></div>
+            <div class="meter-value" id="shortTermValue">-inf</div>
+        </div>
+        <div class="widget-container">
+            <h2>Integrated (I)</h2>
+            <div class="level-meter" style="background-color: transparent; border-color: transparent;"></div>
+            <div class="meter-value" id="integratedValue">-inf</div>
         </div>
         <div class="widget-container">
             <h2>Vectorscope</h2>
@@ -88,6 +98,8 @@
     <script>
         const meterFill = document.getElementById('meterFill');
         const meterValue = document.getElementById('meterValue');
+        const shortTermValue = document.getElementById('shortTermValue');
+        const integratedValue = document.getElementById('integratedValue');
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
@@ -98,6 +110,8 @@
         ws.onmessage = event => {
             try {
                 const data = JSON.parse(event.data);
+
+                // Momentary Loudness
                 if (data.loudness !== undefined) {
                     const loudness = data.loudness;
                     const minLoudness = -60.0;
@@ -117,6 +131,17 @@
                         meterFill.style.backgroundColor = '#27ae60'; // Green
                     }
                 }
+
+                // Short-term Loudness
+                if (data.short_term_loudness !== undefined) {
+                    shortTermValue.textContent = data.short_term_loudness.toFixed(2);
+                }
+
+                // Integrated Loudness
+                if (data.integrated_loudness !== undefined) {
+                    integratedValue.textContent = data.integrated_loudness.toFixed(2);
+                }
+
             } catch (e) {
                 console.error('Error parsing message:', e);
             }
@@ -125,12 +150,16 @@
         ws.onclose = () => {
             console.log('Disconnected from WebSocket server');
             meterValue.textContent = 'Disconnected';
+            shortTermValue.textContent = 'N/A';
+            integratedValue.textContent = 'N/A';
             meterFill.style.backgroundColor = '#95a5a6';
         };
 
         ws.onerror = error => {
             console.error('WebSocket Error:', error);
             meterValue.textContent = 'Error';
+            shortTermValue.textContent = 'Error';
+            integratedValue.textContent = 'Error';
             meterFill.style.backgroundColor = '#e74c3c';
         };
     </script>
