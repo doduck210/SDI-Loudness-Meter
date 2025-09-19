@@ -189,7 +189,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
         if (channelCount == 2)
         {
-            // 1. Append new samples to global buffers ONCE.
+            // 1a. Calculate peak levels for the current audio frame and send to websocket
+            double maxLeft = 0.0;
+            double maxRight = 0.0;
+
+            // 1b. Append new samples to global buffers for loudness calculation.
             if (sampleDepth == 32)
             {
                 int32_t* pcmData = (int32_t*)audioFrameBytes;
@@ -197,6 +201,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 {
                     double leftSample = (double)pcmData[i * 2] / 2147483648.0;
                     double rightSample = (double)pcmData[i * 2 + 1] / 2147483648.0;
+
+                    if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
+                    if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
+
                     g_leftChannelPcm.push_back(leftSample);
                     g_rightChannelPcm.push_back(rightSample);
                     g_shortTermLeftChannelPcm.push_back(leftSample);
@@ -210,6 +218,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 {
                     double leftSample = (double)pcmData[i * 2] / 32768.0;
                     double rightSample = (double)pcmData[i * 2 + 1] / 32768.0;
+
+                    if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
+                    if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
+
                     g_leftChannelPcm.push_back(leftSample);
                     g_rightChannelPcm.push_back(rightSample);
                     g_shortTermLeftChannelPcm.push_back(leftSample);
@@ -217,7 +229,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 }
             }
 
-            // 2. Immediate vectorscope processing (now simplified)
+            double leftDb = (maxLeft > 0.0) ? (20.0 * log10(maxLeft)) : -100.0;
+            double rightDb = (maxRight > 0.0) ? (20.0 * log10(maxRight)) : -100.0;
+            std::ostringstream oss_levels;
+            oss_levels << "{\"type\": \"levels\", \"left\": " << leftDb << ", \"right\": " << rightDb << "}";
+            send_ws_message(oss_levels.str());
+
+            // 2. Immediate vectorscope processing
             if (sampleFrameCount > 0)
             {
                 // Create float vectors from the last 'sampleFrameCount' samples

@@ -34,9 +34,15 @@
         h2 {
             margin-bottom: 10px;
         }
+        .level-meter-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
         .level-meter {
             width: 100%;
-            height: 50px;
+            height: 25px;
             border: 2px solid #34495e;
             background-color: #1c2833;
             border-radius: 5px;
@@ -47,15 +53,27 @@
             height: 100%;
             width: 0%;
             background-color: #27ae60;
-            transition: width 0.1s linear;
+            transition: width 0.05s linear;
             position: absolute;
             left: 0;
             top: 0;
         }
+        .meter-label {
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: white;
+            font-size: 0.9em;
+        }
         .meter-value {
-            margin-top: 15px;
-            font-size: 2em;
+            font-size: 1.5em;
             font-weight: bold;
+        }
+        .sub-meter-value {
+            font-size: 1em;
+            color: #bdc3c7;
+            margin-top: 5px;
         }
         .vectorscope-container {
             width: 250px;
@@ -87,15 +105,26 @@
     <h1>SDI Audio Monitor</h1>
     <div class="monitor-container">
         <div class="widget-container">
-            <h2>Momentary (M)</h2>
-            <div class="level-meter">
-                <div class="meter-fill" id="meterFill"></div>
+            <h2>Levels</h2>
+            <div class="level-meter-container">
+                <div class="level-meter">
+                    <div class="meter-fill" id="leftMeterFill"></div>
+                    <span class="meter-label">L</span>
+                </div>
+                <div class="level-meter">
+                    <div class="meter-fill" id="rightMeterFill"></div>
+                    <span class="meter-label">R</span>
+                </div>
             </div>
-            <div class="meter-value" id="meterValue">-inf</div>
+        </div>
+        <div class="widget-container">
+            <h2>Momentary (M)</h2>
+            <div class="level-meter" style="background-color: transparent; border-color: transparent; height: 0;"></div>
+            <div class="meter-value" id="momentaryValue">-inf</div>
         </div>
         <div class="widget-container">
             <h2>Short-term (S)</h2>
-            <div class="level-meter" style="background-color: transparent; border-color: transparent;"></div>
+            <div class="level-meter" style="background-color: transparent; border-color: transparent; height: 0;"></div>
             <div class="meter-value" id="shortTermValue">-inf</div>
         </div>
         <div class="widget-container">
@@ -114,8 +143,9 @@
     </div>
 
     <script>
-        const meterFill = document.getElementById('meterFill');
-        const meterValue = document.getElementById('meterValue');
+        const leftMeterFill = document.getElementById('leftMeterFill');
+        const rightMeterFill = document.getElementById('rightMeterFill');
+        const momentaryValue = document.getElementById('momentaryValue');
         const shortTermValue = document.getElementById('shortTermValue');
         const integratedValue = document.getElementById('integratedValue');
         const toggleBtn = document.getElementById('toggleIntegration');
@@ -134,6 +164,24 @@
             console.log('Sent command: ' + command);
         };
 
+        function updatePeakMeter(fillElement, dbValue) {
+            const minDb = -60.0;
+            const maxDb = 0.0;
+            
+            let percentage = ((dbValue - minDb) / (maxDb - minDb)) * 100;
+            percentage = Math.max(0, Math.min(100, percentage));
+
+            fillElement.style.width = `${percentage}%`;
+
+            if (dbValue > -6) {
+                fillElement.style.backgroundColor = '#e74c3c'; // Red
+            } else if (dbValue > -12) {
+                fillElement.style.backgroundColor = '#f1c40f'; // Yellow
+            } else {
+                fillElement.style.backgroundColor = '#27ae60'; // Green
+            }
+        }
+
         ws.onmessage = event => {
             try {
                 const data = JSON.parse(event.data);
@@ -149,25 +197,15 @@
                     }
                 }
 
+                // Channel Peak Levels
+                if (data.type === 'levels') {
+                    updatePeakMeter(leftMeterFill, data.left);
+                    updatePeakMeter(rightMeterFill, data.right);
+                }
+
                 // Momentary Loudness
                 if (data.loudness !== undefined) {
-                    const loudness = data.loudness;
-                    const minLoudness = -60.0;
-                    const maxLoudness = 0.0;
-                    
-                    let percentage = ((loudness - minLoudness) / (maxLoudness - minLoudness)) * 100;
-                    percentage = Math.max(0, Math.min(100, percentage));
-
-                    meterFill.style.width = `${percentage}%`;
-                    meterValue.textContent = loudness.toFixed(2);
-
-                    if (loudness > -20) {
-                        meterFill.style.backgroundColor = '#e74c3c'; // Red
-                    } else if (loudness > -23) {
-                        meterFill.style.backgroundColor = '#f1c40f'; // Yellow
-                    } else {
-                        meterFill.style.backgroundColor = '#27ae60'; // Green
-                    }
+                    momentaryValue.textContent = data.loudness.toFixed(2) + ' LKFS';
                 }
 
                 // Short-term Loudness
@@ -187,18 +225,16 @@
 
         ws.onclose = () => {
             console.log('Disconnected from WebSocket server');
-            meterValue.textContent = 'Disconnected';
+            momentaryValue.textContent = 'Disconnected';
             shortTermValue.textContent = 'N/A';
             integratedValue.textContent = 'N/A';
-            meterFill.style.backgroundColor = '#95a5a6';
         };
 
         ws.onerror = error => {
             console.error('WebSocket Error:', error);
-            meterValue.textContent = 'Error';
+            momentaryValue.textContent = 'Error';
             shortTermValue.textContent = 'Error';
             integratedValue.textContent = 'Error';
-            meterFill.style.backgroundColor = '#e74c3c';
         };
     </script>
 </body>
