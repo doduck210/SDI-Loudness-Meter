@@ -19,7 +19,7 @@
         .monitor-container {
             display: flex;
             gap: 20px;
-            align-items: flex-start;
+            align-items: flex-end; /* Align widgets to the bottom */
             flex-wrap: wrap;
             justify-content: center;
         }
@@ -27,6 +27,9 @@
             width: 250px;
             text-align: center;
             margin-bottom: 20px;
+        }
+        .levels-widget-container {
+            width: 120px; /* Narrower for vertical meters */
         }
         h1 {
             margin-bottom: 20px;
@@ -36,13 +39,15 @@
         }
         .level-meter-container {
             display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 10px;
+            flex-direction: row;
+            gap: 20px;
+            justify-content: center;
+            height: 250px;
+            align-items: flex-end;
         }
         .level-meter {
-            width: 100%;
-            height: 25px;
+            width: 35px;
+            height: 220px;
             border: 2px solid #34495e;
             background-color: #1c2833;
             border-radius: 5px;
@@ -50,30 +55,21 @@
             overflow: hidden;
         }
         .meter-fill {
-            height: 100%;
-            width: 0%;
+            width: 100%;
+            height: 0%;
             background-color: #27ae60;
-            transition: width 0.05s linear;
             position: absolute;
             left: 0;
-            top: 0;
+            bottom: 0;
         }
         .meter-label {
             position: absolute;
-            left: 5px;
-            top: 50%;
-            transform: translateY(-50%);
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
             color: white;
-            font-size: 0.9em;
-        }
-        .meter-value {
-            font-size: 1.5em;
+            font-size: 1.1em;
             font-weight: bold;
-        }
-        .sub-meter-value {
-            font-size: 1em;
-            color: #bdc3c7;
-            margin-top: 5px;
         }
         .vectorscope-container {
             width: 250px;
@@ -86,25 +82,55 @@
             width: 100%;
             height: 100%;
         }
-        .control-buttons button {
+        /* New LKFS Widget Styles */
+        .lkfs-display {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #1c2833;
+            padding: 15px;
+            border-radius: 5px;
+            border: 2px solid #34495e;
+            height: 190px;
+            justify-content: center;
+        }
+        .lkfs-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.5em;
+        }
+        .lkfs-label {
+            font-weight: bold;
+            color: #bdc3c7;
+        }
+        .lkfs-value {
+            font-weight: bold;
+            min-width: 80px; /* Ensure alignment */
+            text-align: right;
+        }
+        #toggleIntegration, .placeholder-button {
             background-color: #34495e;
             color: #ecf0f1;
             border: 1px solid #4a627a;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 1em;
-            margin-top: 5px;
+            font-size: 0.8em;
+            margin-left: 10px;
         }
-        .control-buttons button:hover {
+        #toggleIntegration:hover {
             background-color: #4a627a;
+        }
+        .placeholder-button {
+            visibility: hidden;
         }
     </style>
 </head>
 <body>
     <h1>SDI Audio Monitor</h1>
     <div class="monitor-container">
-        <div class="widget-container">
+        <div class="widget-container levels-widget-container">
             <h2>Levels</h2>
             <div class="level-meter-container">
                 <div class="level-meter">
@@ -117,23 +143,28 @@
                 </div>
             </div>
         </div>
+
         <div class="widget-container">
-            <h2>Momentary (M)</h2>
-            <div class="level-meter" style="background-color: transparent; border-color: transparent; height: 0;"></div>
-            <div class="meter-value" id="momentaryValue">-inf</div>
-        </div>
-        <div class="widget-container">
-            <h2>Short-term (S)</h2>
-            <div class="level-meter" style="background-color: transparent; border-color: transparent; height: 0;"></div>
-            <div class="meter-value" id="shortTermValue">-inf</div>
-        </div>
-        <div class="widget-container">
-            <h2>Integrated (I)</h2>
-            <div class="level-meter control-buttons" style="background-color: transparent; border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                <button id="toggleIntegration">Start</button>
+            <h2>LKFS</h2>
+            <div class="lkfs-display">
+                <div class="lkfs-row">
+                    <span class="lkfs-label">M :</span>
+                    <span class="lkfs-value" id="momentaryValue">-inf</span>
+                    <button class="placeholder-button">Start</button>
+                </div>
+                <div class="lkfs-row">
+                    <span class="lkfs-label">S :</span>
+                    <span class="lkfs-value" id="shortTermValue">-inf</span>
+                    <button class="placeholder-button">Start</button>
+                </div>
+                <div class="lkfs-row">
+                    <span class="lkfs-label">I :</span>
+                    <span class="lkfs-value" id="integratedValue">-inf</span>
+                    <button id="toggleIntegration">Start</button>
+                </div>
             </div>
-            <div class="meter-value" id="integratedValue">-inf</div>
         </div>
+
         <div class="widget-container">
             <h2>Vectorscope</h2>
             <div class="vectorscope-container">
@@ -164,14 +195,22 @@
             console.log('Sent command: ' + command);
         };
 
-        function updatePeakMeter(fillElement, dbValue) {
-            const minDb = -60.0;
-            const maxDb = 0.0;
-            
-            let percentage = ((dbValue - minDb) / (maxDb - minDb)) * 100;
-            percentage = Math.max(0, Math.min(100, percentage));
+        const minDb = -60.0;
+        const maxDb = 0.0;
 
-            fillElement.style.width = `${percentage}%`;
+        let meterState = {
+            left: { latestValue: minDb, displayValue: minDb },
+            right: { latestValue: minDb, displayValue: minDb }
+        };
+
+        function dbToPercentage(db) {
+            let percentage = ((db - minDb) / (maxDb - minDb)) * 100;
+            return Math.max(0, Math.min(100, percentage));
+        }
+
+        function updateMeterDOM(fillElement, dbValue) {
+            const percentage = dbToPercentage(dbValue);
+            fillElement.style.height = `${percentage}%`;
 
             if (dbValue > -6) {
                 fillElement.style.backgroundColor = '#e74c3c'; // Red
@@ -180,6 +219,41 @@
             } else {
                 fillElement.style.backgroundColor = '#27ae60'; // Green
             }
+        }
+
+        let lastFrameTime = performance.now();
+        const fallRate = 15; // dB per second
+
+        function animationLoop(currentTime) {
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+
+            let leftState = meterState.left;
+            if (leftState.latestValue > leftState.displayValue) {
+                leftState.displayValue = leftState.latestValue;
+            }
+            else {
+                leftState.displayValue -= fallRate * (deltaTime / 1000);
+                if (leftState.displayValue < leftState.latestValue) {
+                    leftState.displayValue = leftState.latestValue;
+                }
+            }
+
+            let rightState = meterState.right;
+            if (rightState.latestValue > rightState.displayValue) {
+                rightState.displayValue = rightState.latestValue;
+            }
+            else {
+                rightState.displayValue -= fallRate * (deltaTime / 1000);
+                 if (rightState.displayValue < rightState.latestValue) {
+                    rightState.displayValue = rightState.latestValue;
+                }
+            }
+
+            updateMeterDOM(leftMeterFill, leftState.displayValue);
+            updateMeterDOM(rightMeterFill, rightState.displayValue);
+
+            requestAnimationFrame(animationLoop);
         }
 
         ws.onmessage = event => {
@@ -197,23 +271,19 @@
                     }
                 }
 
-                // Channel Peak Levels
                 if (data.type === 'levels') {
-                    updatePeakMeter(leftMeterFill, data.left);
-                    updatePeakMeter(rightMeterFill, data.right);
+                    meterState.left.latestValue = data.left;
+                    meterState.right.latestValue = data.right;
                 }
 
-                // Momentary Loudness
                 if (data.loudness !== undefined) {
-                    momentaryValue.textContent = data.loudness.toFixed(2) + ' LKFS';
+                    momentaryValue.textContent = data.loudness.toFixed(2);
                 }
 
-                // Short-term Loudness
                 if (data.short_term_loudness !== undefined) {
                     shortTermValue.textContent = data.short_term_loudness.toFixed(2);
                 }
 
-                // Integrated Loudness
                 if (data.integrated_loudness !== undefined) {
                     integratedValue.textContent = data.integrated_loudness.toFixed(2);
                 }
@@ -225,7 +295,7 @@
 
         ws.onclose = () => {
             console.log('Disconnected from WebSocket server');
-            momentaryValue.textContent = 'Disconnected';
+            momentaryValue.textContent = 'N/A';
             shortTermValue.textContent = 'N/A';
             integratedValue.textContent = 'N/A';
         };
@@ -236,6 +306,8 @@
             shortTermValue.textContent = 'Error';
             integratedValue.textContent = 'Error';
         };
+
+        requestAnimationFrame(animationLoop);
     </script>
 </body>
 </html>
