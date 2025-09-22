@@ -15,6 +15,7 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
 *   A Blackmagic DeckLink capture card.
 *   Blackmagic decklink driver (desktopvideo) installed.
 *   FFmpeg libraries (development headers).
+*   FFTW3 library (development headers).
 *   Node.js and npm for the web interface.
 *   Asio and WebSocket++ libraries.
 
@@ -33,6 +34,13 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
         ```bash
         sudo apt-get update
         sudo apt-get install libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev
+        ```
+
+    *   **FFTW3 Library**:
+        *On Ubuntu/Debian:*
+        ```bash
+        sudo apt-get update
+        sudo apt-get install libfftw3-dev
         ```
 
     *   **Third-party Libraries (Asio & WebSocket++)**:

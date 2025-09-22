@@ -58,6 +58,7 @@
 #include "Config.h"
 #include "LKFS.h"
 #include "avectorscope_processor.h" // Renamed for clarity
+#include "eq_processor.h"           // For EQ Meter processing
 
 // WebSocket client
 typedef websocketpp::client<websocketpp::config::asio_client> client;
@@ -76,6 +77,7 @@ static bool g_isIntegrating = false;
 
 // FFmpeg-related globals are now encapsulated in AVectorscopeProcessor
 static AVectorscopeProcessor g_avectorscopeProcessor;
+static EQProcessor g_eqProcessor;
 
 // Audio processing globals
 std::deque<double> g_leftChannelPcm;
@@ -83,6 +85,7 @@ std::deque<double> g_rightChannelPcm;
 std::deque<double> g_shortTermLeftChannelPcm;
 std::deque<double> g_shortTermRightChannelPcm;
 std::vector<double> g_momentaryLoudnessHistory;
+
 
 
 const int kAudioSampleRate = 48000;
@@ -177,10 +180,10 @@ ULONG DeckLinkCaptureDelegate::Release(void)
 
 HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame, IDeckLinkAudioInputPacket* audioFrame)
 {
-	(void)videoFrame; // Video frames are ignored, but used for timing
+    (void)videoFrame; // Video frames are ignored, but used for timing
 
-	if (audioFrame)
-	{
+    if (audioFrame)
+    {
         void* audioFrameBytes;
         audioFrame->GetBytes(&audioFrameBytes);
         const unsigned int sampleFrameCount = audioFrame->GetSampleFrameCount();
@@ -193,7 +196,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
             double maxLeft = 0.0;
             double maxRight = 0.0;
 
-            // 1b. Append new samples to global buffers for loudness calculation.
+            // Temporary storage for the current audio frame's samples for EQ processing
+            std::vector<double> current_left_samples;
+            std::vector<double> current_right_samples;
+            current_left_samples.reserve(sampleFrameCount);
+            current_right_samples.reserve(sampleFrameCount);
+
+            // 1b. Append new samples to global buffers.
             if (sampleDepth == 32)
             {
                 int32_t* pcmData = (int32_t*)audioFrameBytes;
@@ -209,6 +218,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     g_rightChannelPcm.push_back(rightSample);
                     g_shortTermLeftChannelPcm.push_back(leftSample);
                     g_shortTermRightChannelPcm.push_back(rightSample);
+                    current_left_samples.push_back(leftSample);
+                    current_right_samples.push_back(rightSample);
                 }
             }
             else if (sampleDepth == 16)
@@ -226,6 +237,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     g_rightChannelPcm.push_back(rightSample);
                     g_shortTermLeftChannelPcm.push_back(leftSample);
                     g_shortTermRightChannelPcm.push_back(rightSample);
+                    current_left_samples.push_back(leftSample);
+                    current_right_samples.push_back(rightSample);
                 }
             }
 
@@ -238,14 +251,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
             // 2. Immediate vectorscope processing
             if (sampleFrameCount > 0)
             {
-                // Create float vectors from the last 'sampleFrameCount' samples
                 std::vector<float> leftChunk(g_leftChannelPcm.end() - sampleFrameCount, g_leftChannelPcm.end());
                 std::vector<float> rightChunk(g_rightChannelPcm.end() - sampleFrameCount, g_rightChannelPcm.end());
-
-                // Delegate processing to the AVectorscopeProcessor
                 g_avectorscopeProcessor.processAudio(leftChunk, rightChunk, sampleFrameCount,
                     [](const std::string& msg) {
-                        // The processor invokes this callback with the final JSON message
                         send_ws_message(msg);
                     }
                 );
@@ -257,13 +266,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 {
                     std::vector<double> leftWindow(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kWindowSizeInSamples);
                     std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
-
                     double lkfs = Momentary_loudness(leftWindow, rightWindow, kAudioSampleRate);
                     std::ostringstream oss;
                     oss << "{\"type\": \"lkfs\", \"value\": " << lkfs << "}";
                     send_ws_message(oss.str());
 
-                    // Integrated Loudness (from all momentary values)
                     if(g_isIntegrating){
                         g_momentaryLoudnessHistory.push_back(lkfs);
                         double i_lkfs = integrated_loudness_with_momentaries(g_momentaryLoudnessHistory, kAudioSampleRate);
@@ -286,7 +293,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 {
                     std::vector<double> leftWindow(g_shortTermLeftChannelPcm.begin(), g_shortTermLeftChannelPcm.begin() + kShortTermWindowSizeInSamples);
                     std::vector<double> rightWindow(g_shortTermRightChannelPcm.begin(), g_shortTermRightChannelPcm.begin() + kShortTermWindowSizeInSamples);
-
                     double s_lkfs = ShortTerm_loudness(leftWindow, rightWindow, kAudioSampleRate);
                     std::ostringstream oss_s;
                     oss_s << "{\"type\": \"s_lkfs\", \"value\": " << s_lkfs << "}";
@@ -299,9 +305,19 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     }
                 }
             }
+
+            // 5. FFT for EQ Meter
+            if (sampleFrameCount > 0)
+            {
+                g_eqProcessor.processAudio(current_left_samples.data(), current_right_samples.data(), sampleFrameCount,
+                    [](const std::string& msg) {
+                        send_ws_message(msg);
+                    }
+                );
+            }
         }
-	}
-	return S_OK;
+    }
+    return S_OK;
 }
 
 
@@ -385,6 +401,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Failed to initialize vectorscope processor\n");
 		goto bail;
 	}
+	g_eqProcessor.initialize();
 
 	deckLink = g_config.GetSelectedDeckLink();
 	if (deckLink == NULL)

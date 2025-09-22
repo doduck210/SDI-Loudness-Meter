@@ -46,10 +46,12 @@ public:
         int ret;
 
         const AVFilter *abuffersrc  = avfilter_get_by_name("abuffer");
+        const AVFilter *volume      = avfilter_get_by_name("volume");
         const AVFilter *avectorscope = avfilter_get_by_name("avectorscope");
         const AVFilter *format      = avfilter_get_by_name("format");
         const AVFilter *buffersink = avfilter_get_by_name("buffersink");
 
+        AVFilterContext* volume_ctx;
         AVFilterContext* avectorscope_ctx;
         AVFilterContext* format_ctx;
 
@@ -68,12 +70,20 @@ public:
             return false;
         }
 
+        ret = avfilter_graph_create_filter(&volume_ctx, volume, "volume", "volume=3.0", NULL, m_filterGraph);
+        if (ret < 0) {
+            fprintf(stderr, "Cannot create volume filter\n");
+            avfilter_graph_free(&m_filterGraph);
+            return false;
+        }
+
         ret = avfilter_graph_create_filter(&avectorscope_ctx, avectorscope, "avectorscope", NULL, NULL, m_filterGraph);
         if (ret < 0) {
             fprintf(stderr, "Cannot create avectorscope filter\n");
             avfilter_graph_free(&m_filterGraph);
             return false;
         }
+        av_opt_set(avectorscope_ctx, "size", "250x250", 0);
         av_opt_set_int(avectorscope_ctx, "mode", 1, 0); // Use 1 for lissajous_xy
 
         snprintf(args, sizeof(args), "pix_fmts=%s", av_get_pix_fmt_name(AV_PIX_FMT_RGB24));
@@ -91,7 +101,8 @@ public:
             return false;
         }
 
-        if ((ret = avfilter_link(m_bufferSrcCtx, 0, avectorscope_ctx, 0)) < 0 ||
+        if ((ret = avfilter_link(m_bufferSrcCtx, 0, volume_ctx, 0)) < 0 ||
+            (ret = avfilter_link(volume_ctx, 0, avectorscope_ctx, 0)) < 0 ||
             (ret = avfilter_link(avectorscope_ctx, 0, format_ctx, 0)) < 0 ||
             (ret = avfilter_link(format_ctx, 0, m_bufferSinkCtx, 0)) < 0) {
             fprintf(stderr, "Error linking filters: %d\n", ret);

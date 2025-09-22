@@ -100,6 +100,13 @@ wss.on('connection', ws => {
                         client.send(JSON.stringify({ type: 'levels', left: msg.left, right: msg.right }));
                     }
                 });
+            } else if (msg.type === 'eq') {
+                // EQ data 값을 모든 웹소켓 클라이언트에게 브로드캐스트
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify(msg));
+                    }
+                });
             } else if (msg.type === 'vectorscope' && msg.data) {
                 const ppmFrame = Buffer.from(msg.data, 'base64');
                 
