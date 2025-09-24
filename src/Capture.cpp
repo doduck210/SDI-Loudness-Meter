@@ -60,6 +60,10 @@
 #include "avectorscope_processor.h" // Renamed for clarity
 #include "eq_processor.h"           // For EQ Meter processing
 
+#ifdef ENABLE_VIDEO_PROCESSING
+#include "VideoProcessor.h"
+#endif
+
 // WebSocket client
 typedef websocketpp::client<websocketpp::config::asio_client> client;
 using websocketpp::lib::bind;
@@ -78,6 +82,9 @@ static bool g_isIntegrating = false;
 // FFmpeg-related globals are now encapsulated in AVectorscopeProcessor
 static AVectorscopeProcessor g_avectorscopeProcessor;
 static EQProcessor g_eqProcessor;
+#ifdef ENABLE_VIDEO_PROCESSING
+static VideoProcessor g_videoProcessor;
+#endif
 
 // Audio processing globals
 std::deque<double> g_leftChannelPcm;
@@ -180,7 +187,15 @@ ULONG DeckLinkCaptureDelegate::Release(void)
 
 HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame, IDeckLinkAudioInputPacket* audioFrame)
 {
+#ifdef ENABLE_VIDEO_PROCESSING
+    if (videoFrame) {
+        g_videoProcessor.processFrame(videoFrame, [](const std::string& msg) {
+            send_ws_message(msg);
+        });
+    }
+#else
     (void)videoFrame; // Video frames are ignored, but used for timing
+#endif
 
     if (audioFrame)
     {
@@ -321,8 +336,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 }
 
 
-HRESULT DeckLinkCaptureDelegate::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents /*events*/, IDeckLinkDisplayMode* /*mode*/, BMDDetectedVideoInputFormatFlags /*formatFlags*/)
+HRESULT DeckLinkCaptureDelegate::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents /*events*/, IDeckLinkDisplayMode* mode, BMDDetectedVideoInputFormatFlags /*formatFlags*/)
 {
+#ifdef ENABLE_VIDEO_PROCESSING
+    BMDTimeValue timeScale, frameDuration;
+    mode->GetFrameRate(&frameDuration, &timeScale);
+    g_videoProcessor.initialize(mode->GetWidth(), mode->GetHeight(), timeScale, frameDuration);
+#endif
 	return S_OK;
 }
 
@@ -403,6 +423,10 @@ int main(int argc, char *argv[])
 	}
 	g_eqProcessor.initialize();
 
+#ifdef ENABLE_VIDEO_PROCESSING
+    fprintf(stderr, "Video processing is enabled.\n");
+#endif
+
 	deckLink = g_config.GetSelectedDeckLink();
 	if (deckLink == NULL)
 	{
@@ -444,6 +468,15 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
+#ifdef ENABLE_VIDEO_PROCESSING
+    BMDTimeValue timeScale, frameDuration;
+    displayMode->GetFrameRate(&frameDuration, &timeScale);
+    if (!g_videoProcessor.initialize(displayMode->GetWidth(), displayMode->GetHeight(), timeScale, frameDuration)) {
+        fprintf(stderr, "Failed to initialize video processor\n");
+        goto bail;
+    }
+#endif
+
 	delegate = new DeckLinkCaptureDelegate();
 	g_deckLinkInput->SetCallback(delegate);
 
@@ -480,6 +513,10 @@ int main(int argc, char *argv[])
     g_deckLinkInput->DisableAudioInput();
 	g_deckLinkInput->DisableVideoInput();
 
+
+#ifdef ENABLE_VIDEO_PROCESSING
+    g_videoProcessor.stop();
+#endif
 
 bail:
     if (g_ws_started) {
