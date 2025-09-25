@@ -72,6 +72,8 @@ Compile the C++ capture application using the provided Makefile.
 
 ```bash
 make
+# or to use video
+make video
 ```
 
 ## Usage
