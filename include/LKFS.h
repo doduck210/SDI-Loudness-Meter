@@ -203,22 +203,25 @@ double ShortTerm_loudness(vector<double> &left, vector<double>&right, double fs)
     size_t len = 144000;
     vector<double> G = {1.0, 1.0};
     
-    /*========================calculate z========================*/
-    double T_g = 3.0;
-    double overlap = 0.75, step = 1 - overlap;
-    double T = len / fs;
-    vector<unsigned> j_range = linspace(unsigned(0), unsigned(round((T-T_g)/(T_g*step))), round((T-T_g)/(T_g*step))+1);
-    
-    vector<double> z_left(j_range.size(), 0.0);
-    vector<double> z_right(j_range.size(), 0.0);
-    calculate_z(left, fs, len, j_range, z_left);
-    calculate_z(right, fs, len, j_range, z_right);
-    
-    // left.clear(); right.clear(); // release unused vector
+    /*========================k_filter========================*/
+    vector<double> left_filtered(len, 0.0);
+    k_filter(left, fs, left_filtered);
+    vector<double> left_powered(left_filtered.begin(), left_filtered.end());
+    vector_ele_pow(left_powered, 2.0);
+
+    vector<double> right_filtered(len, 0.0);
+    k_filter(right, fs, right_filtered);
+    vector<double> right_powered(right_filtered.begin(), right_filtered.end());
+    vector_ele_pow(right_powered, 2.0);
+
+    /*========================mean square========================*/
+    double T_g = 3.0; // Correct gating time
+    double z_left = (1.0 / (T_g * fs)) * vector_sum(left_powered, 0, left_powered.size());
+    double z_right = (1.0 / (T_g * fs)) * vector_sum(right_powered, 0, right_powered.size());
     
     /*========================loudness========================*/
     double l;
-    l = -0.691 + 10.0*log10(G[0]*z_left[0]+G[1]*z_right[0]);
+    l = -0.691 + 10.0*log10(G[0]*z_left+G[1]*z_right);
     
     return l;
 }
