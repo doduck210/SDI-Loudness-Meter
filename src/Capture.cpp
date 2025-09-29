@@ -59,6 +59,7 @@
 #include "LKFS.h"
 #include "avectorscope_processor.h" // Renamed for clarity
 #include "eq_processor.h"           // For EQ Meter processing
+#include "correlator_processor.h"   // For audio correlation processing
 
 #ifdef ENABLE_VIDEO_PROCESSING
 #include "VideoProcessor.h"
@@ -82,6 +83,7 @@ static bool g_isIntegrating = false;
 // FFmpeg-related globals
 static AVectorscopeProcessor g_avectorscopeProcessor;
 static EQProcessor g_eqProcessor;
+static CorrelatorProcessor g_correlatorProcessor;
 #ifdef ENABLE_VIDEO_PROCESSING
 static VideoProcessor g_videoProcessor;
 #endif
@@ -297,6 +299,14 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
             if (sampleFrameCount > 0)
             {
+                // Calculate and send correlation
+                std::vector<float> left_float(current_left_samples.begin(), current_left_samples.end());
+                std::vector<float> right_float(current_right_samples.begin(), current_right_samples.end());
+                float correlation = g_correlatorProcessor.process(left_float.data(), right_float.data(), sampleFrameCount);
+                std::ostringstream oss_corr;
+                oss_corr << "{\"type\": \"correlation\", \"value\": " << correlation << "}";
+                send_ws_message(oss_corr.str());
+
                 g_eqProcessor.processAudio(current_left_samples.data(), current_right_samples.data(), sampleFrameCount,
                     [](const std::string& msg) { send_ws_message(msg); });
             }

@@ -166,6 +166,34 @@
             background-color: #1c2833;
             border-radius: 5px;
         }
+        .correlator-container {
+            width: 250px;
+            height: 25px;
+            border: 2px solid #34495e;
+            background-color: #1c2833;
+            border-radius: 5px;
+            position: relative;
+            margin-top: 10px;
+        }
+        .correlator-bar {
+            position: absolute;
+            width: 0; /* Initial width is 0 */
+            height: 100%;
+            background-color: #27ae60;
+            left: 50%; /* Initial position is center */
+            border-radius: 2px;
+        }
+        .correlator-scale {
+            width: 250px; /* Match container width */
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            top: 5px; /* Adjust position relative to container */
+            font-size: 0.8em;
+            color: #bdc3c7;
+            padding: 0 5px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -211,6 +239,18 @@
             </div>
 
             <div class="widget-container">
+                <h2>Correlator</h2>
+                <div class="correlator-container">
+                    <div class="correlator-bar" id="correlatorBar"></div>
+                </div>
+                <div class="correlator-scale">
+                    <span>-</span>
+                    <span>0</span>
+                    <span>+</span>
+                </div>
+            </div>
+
+            <div class="widget-container">
                 <h2>Vectorscope</h2>
                 <div class="vectorscope-container">
                     <img src="/vectorscope.mjpeg" alt="Vectorscope Stream">
@@ -237,6 +277,7 @@
         const toggleBtn = document.getElementById('toggleIntegration');
         const eqCanvas = document.getElementById('eqCanvas');
         const eqCtx = eqCanvas.getContext('2d');
+        const correlatorBar = document.getElementById('correlatorBar');
 
         let isIntegrating = false;
 
@@ -266,6 +307,8 @@
         let eqState = {
             bands: Array.from({ length: numEqBands }, () => ({ latestValue: minDbEq, displayValue: minDbEq }))
         };
+
+        let correlatorState = { latestValue: 0, displayValue: 0 };
 
         function dbToPercentage(db) {
             let percentage = ((db - minDb) / (maxDb - minDb)) * 100;
@@ -402,6 +445,40 @@
             }
             drawEq(); // Redraw EQ on every frame
 
+            // Correlator animation
+            const corrFallRate = 2.0; // Fall rate in units per second.
+            const decay = corrFallRate * (deltaTime / 1000);
+
+            // If the new value has a larger magnitude, it becomes the new peak.
+            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) {
+                correlatorState.displayValue = correlatorState.latestValue;
+            }
+
+            // The displayed value always falls towards zero.
+            if (correlatorState.displayValue > 0) {
+                correlatorState.displayValue = Math.max(0, correlatorState.displayValue - decay);
+            } else if (correlatorState.displayValue < 0) {
+                correlatorState.displayValue = Math.min(0, correlatorState.displayValue + decay);
+            }
+
+            // A new value from the websocket can override the falling value if its magnitude is greater.
+            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) {
+                correlatorState.displayValue = correlatorState.latestValue;
+            }
+
+            // Update the DOM
+            if (correlatorBar) {
+                const displayValue = correlatorState.displayValue;
+                if (displayValue >= 0) {
+                    correlatorBar.style.left = '50%';
+                    correlatorBar.style.width = (displayValue * 50) + '%';
+                } else {
+                    const width = -displayValue * 50;
+                    correlatorBar.style.left = (50 - width) + '%';
+                    correlatorBar.style.width = width + '%';
+                }
+            }
+
             requestAnimationFrame(animationLoop);
         }
 
@@ -423,6 +500,10 @@
                 if (data.type === 'levels') {
                     meterState.left.latestValue = data.left;
                     meterState.right.latestValue = data.right;
+                }
+
+                if (data.type === 'correlation') {
+                    correlatorState.latestValue = data.value;
                 }
 
                 if (data.type === 'eq') {

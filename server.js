@@ -107,6 +107,13 @@ wss.on('connection', ws => {
                         client.send(JSON.stringify(msg));
                     }
                 });
+            } else if (msg.type === 'correlation') {
+                // Forward correlation data to all web clients
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify(msg));
+                    }
+                });
             } else if (msg.type === 'vectorscope' && msg.data) {
                 const ppmFrame = Buffer.from(msg.data, 'base64');
                 
