@@ -13,6 +13,7 @@
 #include <cmath>
 #include <vector>
 #include <ctime>
+#include <algorithm>
 #include "vector_operation.h"
 #include "Wav.h"
 #define pi 3.14159265358979323846
@@ -222,7 +223,74 @@ double ShortTerm_loudness(vector<double> &left, vector<double>&right, double fs)
     return l;
 }
 
-/*===================intergrated_loudness_with_momentaries func. Stereo overload====================*/
+/*===================LRA_with_shorts func====================*/
+// get LRA with S-LKFS
+double LRA_with_shorts(const vector<double>& shorts) {
+    if (shorts.empty()) {
+        return 0.0;
+    }
+
+    // --- Calculate Relative Gate Threshold ---
+    const double Gamma_a = -70.0;
+    vector<double> z_sum_abs_gated;
+    for(size_t i = 0; i < shorts.size(); ++i) {
+        if (shorts[i] > Gamma_a) {
+            z_sum_abs_gated.push_back(pow(10, (shorts[i] + 0.691) / 10.0));
+        }
+    }
+
+    if (z_sum_abs_gated.empty()) {
+        return 0.0; // No values above absolute gate
+    }
+
+    double z_avg_for_gate = vector_mean(z_sum_abs_gated);
+    double Gamma_r = -0.691 + 10.0*log10(z_avg_for_gate) - 20.0;
+
+    // --- Gating Steps ---
+    vector<double> final_gated_loudness;
+    for (size_t i = 0; i < z_sum_abs_gated.size(); ++i) {
+        double tmpLKFS=-0.691 + 10.0*log10(z_sum_abs_gated[i]);
+        if (tmpLKFS > Gamma_r) {
+            final_gated_loudness.push_back(tmpLKFS);
+        }
+    }
+
+    if (final_gated_loudness.size() < 2) {
+        return 0.0; // Not enough data to compute a meaningful range
+    }
+
+    // --- Percentile Calculation ---
+    sort(final_gated_loudness.begin(), final_gated_loudness.end());
+
+    size_t n = final_gated_loudness.size();
+
+    // Calculate 10th percentile (L10) using linear interpolation
+    double idx10_double = (n - 1) * 0.10;
+    size_t floor10 = static_cast<size_t>(idx10_double);
+    double frac10 = idx10_double - floor10;
+    double L10;
+    if (floor10 + 1 >= n) {
+        L10 = final_gated_loudness[n - 1];
+    } else {
+        L10 = final_gated_loudness[floor10] * (1.0 - frac10) + final_gated_loudness[floor10 + 1] * frac10;
+    }
+
+    // Calculate 95th percentile (L95) using linear interpolation
+    double idx95_double = (n - 1) * 0.95;
+    size_t floor95 = static_cast<size_t>(idx95_double);
+    double frac95 = idx95_double - floor95;
+    double L95;
+    if (floor95 + 1 >= n) {
+        L95 = final_gated_loudness[n - 1];
+    } else {
+        L95 = final_gated_loudness[floor95] * (1.0 - frac95) + final_gated_loudness[floor95 + 1] * frac95;
+    }
+
+    // LRA is the difference
+    return L95 - L10;
+}
+
+/*===================intergrated_loudness_with_momentaries func====================*/
 // get I-LKFS with M-LKFS 
 // so only gatings are implemented
 double integrated_loudness_with_momentaries(vector<double> momentaries, double fs) {

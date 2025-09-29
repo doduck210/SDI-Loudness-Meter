@@ -124,7 +124,17 @@
             padding: 15px;
             border-radius: 5px;
             border: 2px solid #34495e;
-            height: 190px;
+            height: 240px; /* Adjusted height */
+            justify-content: center;
+        }
+        .lra-display {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            background-color: #1c2833;
+            padding: 10px;
+            border-radius: 5px;
+            border: 2px solid #34495e;
             justify-content: center;
         }
         .lkfs-row {
@@ -157,6 +167,20 @@
         }
         .placeholder-button {
             visibility: hidden;
+        }
+        .lra-bar-container {
+            width: 100%;
+            height: 10px;
+            background-color: #2c3e50;
+            border-radius: 3px;
+            margin-top: 5px;
+            position: relative;
+        }
+        .lra-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #3498db;
+            border-radius: 3px;
         }
         .eq-widget-container {
             width: 500px;
@@ -250,6 +274,23 @@
                 </div>
             </div>
 
+            <div class="widget-container lkfs-widget-container">
+                <h2>LRA</h2>
+                <div class="lra-display">
+                    <div class="lkfs-row">
+                        <div style="flex-basis: 100%;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8em;">
+                                <span class="lkfs-label">LRA:</span>
+                                <span class="lkfs-value" id="lraValue" style="font-size: 1em;">0.0</span>
+                            </div>
+                            <div class="lra-bar-container">
+                                <div class="lra-bar" id="lraBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="widget-container">
                 <h2>Vectorscope</h2>
                 <div class="vectorscope-container">
@@ -274,6 +315,8 @@
         const momentaryValue = document.getElementById('momentaryValue');
         const shortTermValue = document.getElementById('shortTermValue');
         const integratedValue = document.getElementById('integratedValue');
+        const lraValue = document.getElementById('lraValue');
+        const lraBar = document.getElementById('lraBar');
         const toggleBtn = document.getElementById('toggleIntegration');
         const eqCanvas = document.getElementById('eqCanvas');
         const eqCtx = eqCanvas.getContext('2d');
@@ -425,7 +468,9 @@
             let rightState = meterState.right;
             if (rightState.latestValue > rightState.displayValue) {
                 rightState.displayValue = rightState.latestValue;
-            } else {
+            }
+
+            else {
                 rightState.displayValue = Math.max(rightState.displayValue - fallRate * (deltaTime / 1000), minDb);
             }
 
@@ -526,6 +571,14 @@
                     integratedValue.textContent = data.integrated_loudness.toFixed(2);
                 }
 
+                if (data.type === 'lra') {
+                    const currentLra = data.value;
+                    lraValue.textContent = currentLra.toFixed(1);
+                    // Map LRA value to bar width. Assuming a max LRA of 25 for 100% width.
+                    const lraPercentage = Math.min(100, (currentLra / 25) * 100);
+                    lraBar.style.width = `${lraPercentage}%`;
+                }
+
             } catch (e) {
                 console.error('Error parsing message:', e);
             }
@@ -536,6 +589,7 @@
             momentaryValue.textContent = 'N/A';
             shortTermValue.textContent = 'N/A';
             integratedValue.textContent = 'N/A';
+            lraValue.textContent = 'N/A';
         };
 
         ws.onerror = error => {
@@ -543,6 +597,7 @@
             momentaryValue.textContent = 'Error';
             shortTermValue.textContent = 'Error';
             integratedValue.textContent = 'Error';
+            lraValue.textContent = 'Error';
         };
 
         createScale();

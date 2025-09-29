@@ -94,6 +94,7 @@ std::deque<double> g_rightChannelPcm;
 std::deque<double> g_shortTermLeftChannelPcm;
 std::deque<double> g_shortTermRightChannelPcm;
 std::vector<double> g_momentaryLoudnessHistory;
+std::vector<double> g_shortTermLoudnessHistory;
 
 const int kAudioSampleRate = 48000;
 const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
@@ -153,6 +154,7 @@ void on_ws_message(client* c, websocketpp::connection_hdl hdl, client::message_p
     if (payload.find("\"command\"") != std::string::npos && payload.find("\"start_integration\"") != std::string::npos) {
         fprintf(stderr, "Received start integration command.\n");
         g_momentaryLoudnessHistory.clear();
+        g_shortTermLoudnessHistory.clear();
         g_isIntegrating = true;
     } else if (payload.find("\"command\"") != std::string::npos && payload.find("\"stop_integration\"") != std::string::npos) {
         fprintf(stderr, "Received stop integration command.\n");
@@ -291,6 +293,19 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 std::ostringstream oss_s;
                 oss_s << "{\"type\": \"s_lkfs\", \"value\": " << s_lkfs << "}";
                 send_ws_message(oss_s.str());
+
+                if (g_isIntegrating) {
+                    g_shortTermLoudnessHistory.push_back(s_lkfs);
+                    
+                    // Calculate and send LRA continuously
+                    if (g_shortTermLoudnessHistory.size() > 1) { // Need at least 2 values for a range
+                        double lra = LRA_with_shorts(g_shortTermLoudnessHistory);
+                        std::ostringstream oss_lra;
+                        oss_lra << "{\"type\": \"lra\", \"value\": " << lra << "}";
+                        send_ws_message(oss_lra.str());
+                    }
+                }
+
                 for (unsigned int i = 0; i < kSlideSizeInSamples; ++i) {
                     g_shortTermLeftChannelPcm.pop_front();
                     g_shortTermRightChannelPcm.pop_front();
