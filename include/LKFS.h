@@ -206,18 +206,16 @@ double ShortTerm_loudness(vector<double> &left, vector<double>&right, double fs)
     /*========================k_filter========================*/
     vector<double> left_filtered(len, 0.0);
     k_filter(left, fs, left_filtered);
-    vector<double> left_powered(left_filtered.begin(), left_filtered.end());
-    vector_ele_pow(left_powered, 2.0);
+    vector_ele_pow(left_filtered, 2.0);
 
     vector<double> right_filtered(len, 0.0);
     k_filter(right, fs, right_filtered);
-    vector<double> right_powered(right_filtered.begin(), right_filtered.end());
-    vector_ele_pow(right_powered, 2.0);
+    vector_ele_pow(right_filtered, 2.0);
 
     /*========================mean square========================*/
     double T_g = 3.0; // Correct gating time
-    double z_left = (1.0 / (T_g * fs)) * vector_sum(left_powered, 0, left_powered.size());
-    double z_right = (1.0 / (T_g * fs)) * vector_sum(right_powered, 0, right_powered.size());
+    double z_left = (1.0 / (T_g * fs)) * vector_sum(left_filtered, 0, left_filtered.size());
+    double z_right = (1.0 / (T_g * fs)) * vector_sum(right_filtered, 0, right_filtered.size());
     
     /*========================loudness========================*/
     double l;
