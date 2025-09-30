@@ -58,6 +58,8 @@ public:
 
 	int						m_audioChannels;
 	int						m_audioSampleDepth;
+	int						m_leftAudioChannel;
+	int						m_rightAudioChannel;
 
 	int						m_maxFrames;
 

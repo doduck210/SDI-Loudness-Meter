@@ -3,55 +3,115 @@ const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const sharp = require('sharp');
+const express = require('express');
+const { spawn } = require('child_process');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 const mjpegClients = new Set();
 let isIntegrating = false;
+let captureProcess = null;
 
-// 1. HTTP 서버 생성
-const server = http.createServer((req, res) => {
-    if (req.url === '/vectorscope.mjpeg') {
-        // MJPEG 스트림 요청 처리
-        res.writeHead(200, {
-            'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache, no-store, max-age=0, must-revalidate',
-            'Pragma': 'no-cache'
+// Default settings
+let channelSettings = {
+    leftAudioChannel: 0,
+    rightAudioChannel: 1,
+    device: 0,
+    mode: -1
+};
+
+function startCapture() {
+    const spawnProcess = () => {
+        const args = [
+            '-d', channelSettings.device,
+            '-m', channelSettings.mode,
+            '-c', 16, // Always capture 16 channels
+            '-L', channelSettings.leftAudioChannel,
+            '-R', channelSettings.rightAudioChannel
+        ];
+
+        console.log(`Starting Capture with args: ${args.join(' ')}`);
+        captureProcess = spawn(path.join(__dirname, 'Capture'), args);
+
+        captureProcess.stdout.on('data', (data) => {
+            console.log(`Capture stdout: ${data}`);
         });
-        mjpegClients.add(res); // 클라이언트 리스트에 추가
-        console.log(`MJPEG stream client connected. Total clients: ${mjpegClients.size}`);
 
-        req.on('close', () => {
-            mjpegClients.delete(res); // 연결 종료 시 클라이언트 제거
-            console.log(`MJPEG stream client disconnected. Total clients: ${mjpegClients.size}`);
+        captureProcess.stderr.on('data', (data) => {
+            console.error(`Capture stderr: ${data}`);
         });
 
+        captureProcess.on('close', (code) => {
+            console.log(`Capture process exited with code ${code}`);
+            captureProcess = null; // Clear the process handle
+        });
+
+        captureProcess.on('error', (err) => {
+            console.error('Failed to start Capture process:', err);
+        });
+    };
+
+    if (captureProcess) {
+        console.log('Stopping existing Capture process...');
+        captureProcess.once('close', () => {
+            console.log('Previous Capture process terminated. Starting new one.');
+            spawnProcess();
+        });
+        captureProcess.kill('SIGKILL');
     } else {
-        // index.html 파일 제공
-        const filePath = path.join(__dirname, 'index.html');
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                res.end('Error loading index.html');
-                return;
-            }
-            res.writeHead(200, {'Content-Type': 'text/html'});
-            res.end(data);
-        });
+        spawnProcess();
+    }
+}
+
+app.use(express.json());
+app.use(express.static(__dirname));
+
+app.get('/api/settings', (req, res) => {
+    res.json(channelSettings);
+});
+
+app.post('/api/settings', (req, res) => {
+    const { leftChannel, rightChannel } = req.body;
+    if (leftChannel !== undefined && rightChannel !== undefined) {
+        channelSettings.leftAudioChannel = parseInt(leftChannel, 10);
+        channelSettings.rightAudioChannel = parseInt(rightChannel, 10);
+        console.log('Updated channel settings:', channelSettings);
+        
+        startCapture(); // Restart capture process with new settings
+
+        res.json({ success: true, message: 'Settings updated and Capture process restarted.' });
+    } else {
+        res.status(400).json({ success: false, message: 'Invalid settings provided.' });
     }
 });
 
-// 2. WebSocket 서버 생성
-const wss = new WebSocket.Server({ server });
+app.get('/vectorscope.mjpeg', (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache, no-store, max-age=0, must-revalidate',
+        'Pragma': 'no-cache'
+    });
+    mjpegClients.add(res);
+    console.log(`MJPEG stream client connected. Total clients: ${mjpegClients.size}`);
+
+    req.on('close', () => {
+        mjpegClients.delete(res);
+        console.log(`MJPEG stream client disconnected. Total clients: ${mjpegClients.size}`);
+    });
+});
 
 wss.on('connection', ws => {
     console.log('WebSocket client connected');
     ws.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
+    ws.send(JSON.stringify({ type: 'settings', ...channelSettings }));
 
     ws.on('message', message => {
         try {
             const msg = JSON.parse(message);
 
-            // Check for commands from the web client and forward them
             if (msg.command) {
                 if (msg.command === 'start_integration') {
                     isIntegrating = true;
@@ -59,84 +119,47 @@ wss.on('connection', ws => {
                     isIntegrating = false;
                 }
 
-                // Forward the command to C++ app (by broadcasting)
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify(msg));
                     }
                 });
 
-                // Broadcast the new state to all web clients
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
                     }
                 });
             } else if (msg.type === 'lkfs') {
-                // LKFS 값을 모든 웹소켓 클라이언트에게 브로드캐스트 (C++ 클라이언트 포함)
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ loudness: msg.value }));
                     }
                 });
             } else if (msg.type === 's_lkfs') {
-                // S-LKFS 값을 모든 웹소켓 클라이언트에게 브로드캐스트
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ short_term_loudness: msg.value }));
                     }
                 });
             } else if (msg.type === 'i_lkfs') {
-                // I-LKFS 값을 모든 웹소켓 클라이언트에게 브로드캐스트
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ integrated_loudness: msg.value }));
                     }
                 });
-            } else if (msg.type === 'lra') {
-                // LRA 값을 모든 웹소켓 클라이언트에게 브로드캐스트
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ type: 'lra', value: msg.value }));
-                    }
-                });
-            } else if (msg.type === 'levels') {
-                // Channel level 값을 모든 웹소켓 클라이언트에게 브로드캐스트
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ type: 'levels', left: msg.left, right: msg.right }));
-                    }
-                });
-            } else if (msg.type === 'eq') {
-                // EQ data 값을 모든 웹소켓 클라이언트에게 브로드캐스트
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(msg));
-                    }
-                });
-            } else if (msg.type === 'correlation') {
-                // Forward correlation data to all web clients
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(msg));
-                    }
-                });
             } else if (msg.type === 'vectorscope' && msg.data) {
                 const ppmFrame = Buffer.from(msg.data, 'base64');
-                
-                // PPM 헤더에서 width/height를 간단히 파싱 (더 견고한 파서가 필요할 수 있음)
                 const headerMatch = ppmFrame.toString('ascii', 0, 30).match(/P6\n(\d+)\s(\d+)\n255\n/);
                 if (!headerMatch) return;
 
                 const width = parseInt(headerMatch[1], 10);
                 const height = parseInt(headerMatch[2], 10);
 
-                // PPM을 JPEG으로 변환
                 sharp(ppmFrame, { raw: { width, height, channels: 3 } })
                     .jpeg()
                     .toBuffer()
                     .then(jpegFrame => {
-                        // 모든 MJPEG 클라이언트에게 프레임 전송
                         mjpegClients.forEach(client => {
                             client.write('--frame\r\n');
                             client.write('Content-Type: image/jpeg\r\n');
@@ -146,9 +169,14 @@ wss.on('connection', ws => {
                             client.write('\r\n');
                         });
                     })
-                    .catch(err => {
-                        // console.error('Error converting PPM to JPEG:', err);
-                    });
+                    .catch(err => {});
+            } else {
+                // Broadcast all other messages
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify(msg));
+                    }
+                });
             }
         } catch (e) {
             // console.error('Failed to parse WebSocket message:', e);
@@ -160,9 +188,8 @@ wss.on('connection', ws => {
     });
 });
 
-// 3. 서버 시작
 const PORT = 8080;
 server.listen(PORT, () => {
     console.log(`Server is listening on http://localhost:${PORT}`);
-    console.log('Ready for C++ application to connect.');
+    startCapture(); // Initial start of the Capture process
 });

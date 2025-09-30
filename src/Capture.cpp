@@ -206,7 +206,16 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
         const unsigned int channelCount = g_config.m_audioChannels;
         const unsigned int sampleDepth = g_config.m_audioSampleDepth;
 
-        if (channelCount == 2)
+        const unsigned int leftChannel = g_config.m_leftAudioChannel;
+        const unsigned int rightChannel = g_config.m_rightAudioChannel;
+
+        if (leftChannel >= channelCount || rightChannel >= channelCount)
+        {
+            fprintf(stderr, "Error: Invalid audio channel selection. Left: %u, Right: %u, Total Channels: %u\n", leftChannel, rightChannel, channelCount);
+            return S_OK; // Or handle error appropriately
+        }
+
+        // if (channelCount == 2) // We now handle any number of channels, just picking two.
         {
             double maxLeft = 0.0;
             double maxRight = 0.0;
@@ -220,8 +229,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 int32_t* pcmData = (int32_t*)audioFrameBytes;
                 for (unsigned int i = 0; i < sampleFrameCount; ++i)
                 {
-                    double leftSample = (double)pcmData[i * 2] / 2147483648.0;
-                    double rightSample = (double)pcmData[i * 2 + 1] / 2147483648.0;
+                    double leftSample = (double)pcmData[i * channelCount + leftChannel] / 2147483648.0;
+                    double rightSample = (double)pcmData[i * channelCount + rightChannel] / 2147483648.0;
                     if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
                     if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
                     g_leftChannelPcm.push_back(leftSample);
@@ -237,8 +246,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                 int16_t* pcmData = (int16_t*)audioFrameBytes;
                 for (unsigned int i = 0; i < sampleFrameCount; ++i)
                 {
-                    double leftSample = (double)pcmData[i * 2] / 32768.0;
-                    double rightSample = (double)pcmData[i * 2 + 1] / 32768.0;
+                    double leftSample = (double)pcmData[i * channelCount + leftChannel] / 32768.0;
+                    double rightSample = (double)pcmData[i * channelCount + rightChannel] / 32768.0;
                     if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
                     if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
                     g_leftChannelPcm.push_back(leftSample);

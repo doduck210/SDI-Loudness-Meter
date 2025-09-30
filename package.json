@@ -20,6 +20,7 @@
   "license": "ISC",
   "dependencies": {
     "sharp": "^0.34.3",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "express": "^4.19.2"
   }
 }

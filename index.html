@@ -218,11 +218,76 @@
             padding: 0 5px;
             box-sizing: border-box;
         }
+        /* Settings Menu Styles */
+        .settings-menu {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #34495e;
+            border-radius: 5px;
+            padding: 10px;
+            z-index: 100;
+        }
+        .settings-content {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        #settings-toggle {
+            background: none;
+            border: none;
+            color: #ecf0f1;
+            font-size: 1.2em;
+            cursor: pointer;
+        }
+        .channel-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .channel-selector label {
+            font-size: 0.9em;
+        }
+        .channel-selector select {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            border: 1px solid #4a627a;
+            border-radius: 3px;
+            padding: 5px;
+        }
+        #save-settings {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #save-settings:hover {
+            background-color: #2ecc71;
+        }
     </style>
 </head>
 <body>
+    <div class="settings-menu">
+        <button id="settings-toggle">⚙️</button>
+        <div id="settings-content" class="settings-content">
+            <h3>Channel Settings</h3>
+            <div class="channel-selector">
+                <label for="left-channel">Left Channel:</label>
+                <select id="left-channel"></select>
+            </div>
+            <div class="channel-selector">
+                <label for="right-channel">Right Channel:</label>
+                <select id="right-channel"></select>
+            </div>
+            <button id="save-settings">Save & Restart</button>
+        </div>
+    </div>
+
     <div class="main-container">
-        <h1>SDI Audio Monitor</h1>
+        <h1>Ducky's Audio Monitor</h1>
         <div class="monitor-row">
             <div class="widget-container levels-widget-container">
                 <h2>Levels</h2>
@@ -322,12 +387,21 @@
         const eqCtx = eqCanvas.getContext('2d');
         const correlatorBar = document.getElementById('correlatorBar');
 
+        // Settings Menu
+        const settingsToggle = document.getElementById('settings-toggle');
+        const settingsContent = document.getElementById('settings-content');
+        const leftChannelSelect = document.getElementById('left-channel');
+        const rightChannelSelect = document.getElementById('right-channel');
+        const saveSettingsBtn = document.getElementById('save-settings');
+
         let isIntegrating = false;
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
         ws.onopen = () => {
             console.log('Connected to WebSocket server');
+            // Request current settings when connected
+            ws.send(JSON.stringify({ command: 'get_settings' }));
         };
 
         toggleBtn.onclick = () => {
@@ -335,6 +409,53 @@
             ws.send(JSON.stringify({ command: command }));
             console.log('Sent command: ' + command);
         };
+
+        // --- Settings Menu Logic ---
+        function populateChannelSelectors() {
+            for (let i = 0; i < 16; i++) {
+                const optionL = document.createElement('option');
+                optionL.value = i;
+                optionL.textContent = `Channel ${i + 1}`;
+                leftChannelSelect.appendChild(optionL);
+
+                const optionR = document.createElement('option');
+                optionR.value = i;
+                optionR.textContent = `Channel ${i + 1}`;
+                rightChannelSelect.appendChild(optionR);
+            }
+        }
+
+        settingsToggle.onclick = () => {
+            const isDisplayed = settingsContent.style.display === 'flex';
+            settingsContent.style.display = isDisplayed ? 'none' : 'flex';
+        };
+
+        saveSettingsBtn.onclick = () => {
+            const leftChannel = leftChannelSelect.value;
+            const rightChannel = rightChannelSelect.value;
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ leftChannel, rightChannel }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Settings saved:', data);
+                alert('Settings saved and Capture process restarted.');
+                settingsContent.style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error saving settings:', error);
+                alert('Error saving settings.');
+            });
+        };
+        
+        populateChannelSelectors();
+        // --- End of Settings Menu Logic ---
+
 
         const minDb = -60.0;
         const maxDb = 0.0;
@@ -530,6 +651,11 @@
         ws.onmessage = event => {
             try {
                 const data = JSON.parse(event.data);
+
+                if (data.type === 'settings') {
+                    leftChannelSelect.value = data.leftAudioChannel;
+                    rightChannelSelect.value = data.rightAudioChannel;
+                }
 
                 if (data.type === 'integration_state') {
                     isIntegrating = data.is_integrating;

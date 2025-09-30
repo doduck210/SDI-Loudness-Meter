@@ -50,6 +50,8 @@ BMDConfig::BMDConfig() :
 	m_displayModeIndex(-2),
 	m_audioChannels(2),
 	m_audioSampleDepth(16),
+	m_leftAudioChannel(0),
+	m_rightAudioChannel(1),
 	m_maxFrames(-1),
 	m_inputFlags(bmdVideoInputFlagDefault),
 	m_pixelFormat(bmdFormat8BitYUV),
@@ -75,7 +77,7 @@ bool BMDConfig::ParseArguments(int argc,  char** argv)
 	int		ch;
 	bool	displayHelp = false;
 
-	while ((ch = getopt(argc, argv, "d:?h3c:s:v:a:m:n:p:t:")) != -1)
+	while ((ch = getopt(argc, argv, "d:?h3c:s:v:a:m:n:p:t:L:R:")) != -1)
 	{
 		switch (ch)
 		{
@@ -147,6 +149,14 @@ bool BMDConfig::ParseArguments(int argc,  char** argv)
 					fprintf(stderr, "Invalid argument: Timecode format \"%s\" is invalid\n", optarg);
 					return false;
 				}
+				break;
+
+			case 'L':
+				m_leftAudioChannel = atoi(optarg);
+				break;
+
+			case 'R':
+				m_rightAudioChannel = atoi(optarg);
 				break;
 
 			case '?':
