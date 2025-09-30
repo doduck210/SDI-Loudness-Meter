@@ -223,16 +223,19 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background-color: #34495e;
-            border-radius: 5px;
-            padding: 10px;
             z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
         }
         .settings-content {
             display: none;
             flex-direction: column;
             gap: 10px;
             margin-top: 10px;
+            background-color: #34495e;
+            border-radius: 5px;
+            padding: 10px;
         }
         #settings-toggle {
             background: none;
@@ -240,6 +243,9 @@
             color: #ecf0f1;
             font-size: 1.2em;
             cursor: pointer;
+            padding: 5px;
+            background-color: #34495e;
+            border-radius: 5px;
         }
         .channel-selector {
             display: flex;
@@ -266,6 +272,42 @@
         }
         #save-settings:hover {
             background-color: #2ecc71;
+        }
+        /* Status Display Styles */
+        .status-display {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        #status-toggle {
+            background-color: #34495e;
+            color: #ecf0f1;
+            border: 1px solid #4a627a;
+            border-radius: 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        #status-content {
+            display: none;
+            background-color: #1c2833;
+            border: 2px solid #34495e;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 5px;
+            width: 200px;
+            font-size: 0.9em;
+        }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start; /* Align items to the top */
+        }
+        .status-row span:last-child {
+            text-align: right;
         }
     </style>
 </head>
@@ -371,6 +413,20 @@
         </div>
     </div>
 
+    <div class="status-display">
+        <div id="status-content">
+            <div class="status-row">
+                <span>CPU:</span>
+                <span id="cpu-usage">-</span>
+            </div>
+            <div class="status-row">
+                <span>Memory:</span>
+                <span id="mem-usage">-</span>
+            </div>
+        </div>
+        <button id="status-toggle">Status</button>
+    </div>
+
     <script>
         const leftMeterFill = document.getElementById('leftMeterFill');
         const rightMeterFill = document.getElementById('rightMeterFill');
@@ -393,6 +449,12 @@
         const leftChannelSelect = document.getElementById('left-channel');
         const rightChannelSelect = document.getElementById('right-channel');
         const saveSettingsBtn = document.getElementById('save-settings');
+
+        // Status Display
+        const statusToggle = document.getElementById('status-toggle');
+        const statusContent = document.getElementById('status-content');
+        const cpuUsageSpan = document.getElementById('cpu-usage');
+        const memUsageSpan = document.getElementById('mem-usage');
 
         let isIntegrating = false;
 
@@ -455,6 +517,13 @@
         
         populateChannelSelectors();
         // --- End of Settings Menu Logic ---
+
+        // --- Status Display Logic ---
+        statusToggle.onclick = () => {
+            const isDisplayed = statusContent.style.display === 'block';
+            statusContent.style.display = isDisplayed ? 'none' : 'block';
+        };
+        // --- End of Status Display Logic ---
 
 
         const minDb = -60.0;
@@ -655,6 +724,13 @@
                 if (data.type === 'settings') {
                     leftChannelSelect.value = data.leftAudioChannel;
                     rightChannelSelect.value = data.rightAudioChannel;
+                }
+
+                if (data.type === 'system_stats') {
+                    cpuUsageSpan.textContent = `${data.cpu.toFixed(1)}%`;
+                    const memUsedGb = data.memory.used / (1024**3);
+                    const memTotalGb = data.memory.total / (1024**3);
+                    memUsageSpan.innerHTML = `${data.memory.percent.toFixed(1)}%<br><small>(${memUsedGb.toFixed(2)}/${memTotalGb.toFixed(2)} GB)</small>`;
                 }
 
                 if (data.type === 'integration_state') {

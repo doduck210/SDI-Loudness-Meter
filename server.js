@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const WebSocket = require('ws');
 const sharp = require('sharp');
 const express = require('express');
@@ -22,6 +23,46 @@ let channelSettings = {
     mode: -1
 };
 
+// --- System Stats ---
+let lastCpuTimes = os.cpus().map(c => c.times);
+
+function getCpuUsage() {
+    const currentCpuTimes = os.cpus().map(c => c.times);
+    const usage = currentCpuTimes.map((times, i) => {
+        const last = lastCpuTimes[i];
+        const idle = times.idle - last.idle;
+        const total = (times.user - last.user) + (times.nice - last.nice) + (times.sys - last.sys) + (times.irq - last.irq) + idle;
+        return total > 0 ? 1 - (idle / total) : 0;
+    });
+    lastCpuTimes = currentCpuTimes;
+    const avgUsage = usage.reduce((a, b) => a + b, 0) / usage.length;
+    return avgUsage;
+}
+
+setInterval(() => {
+    const cpuUsage = getCpuUsage();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+
+    const statsMsg = JSON.stringify({
+        type: 'system_stats',
+        cpu: cpuUsage * 100,
+        memory: {
+            percent: (usedMem / totalMem) * 100,
+            used: usedMem,
+            total: totalMem
+        }
+    });
+
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(statsMsg);
+        }
+    });
+}, 2000); // Send stats every 2 seconds
+
+// --- Capture Process Management ---
 function startCapture() {
     const spawnProcess = () => {
         const args = [
@@ -65,6 +106,7 @@ function startCapture() {
     }
 }
 
+// --- Express Setup ---
 app.use(express.json());
 app.use(express.static(__dirname));
 
@@ -103,6 +145,7 @@ app.get('/vectorscope.mjpeg', (req, res) => {
     });
 });
 
+// --- WebSocket Handling ---
 wss.on('connection', ws => {
     console.log('WebSocket client connected');
     ws.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
@@ -188,6 +231,7 @@ wss.on('connection', ws => {
     });
 });
 
+// --- Server Start ---
 const PORT = 8080;
 server.listen(PORT, () => {
     console.log(`Server is listening on http://localhost:${PORT}`);
