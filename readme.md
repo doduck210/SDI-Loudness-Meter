@@ -49,9 +49,9 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
         mkdir -p libs
         cd libs
 
-        # Download and extract Asio (check for the latest version)
-        wget -O asio.tar.gz https://sourceforge.net/projects/asio/files/latest/download
-        tar -zxvf asio.tar.gz
+        # Download and extract Asio (version 1.28.1 is required)
+        wget https://downloads.sourceforge.net/project/asio/asio/1.28.1%20(Stable)/asio-1.28.1.tar.gz
+        tar -zxvf asio-1.28.1.tar.gz
 
         # Download WebSocket++
         git clone https://github.com/zaphoyd/websocketpp.git
