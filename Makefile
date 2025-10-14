@@ -15,7 +15,7 @@ audio:
 	@$(MAKE) -s $(TARGET)
 
 video:
-	@echo "Building with video processing enabled..."
+	@echo "Building with video processing and WebRTC enabled..."
 	@$(MAKE) -s $(TARGET) ENABLE_VIDEO_PROCESSING=1
 
 # --- Build Rules ---
@@ -24,14 +24,19 @@ video:
 SRCS = src/Capture.cpp src/Config.cpp src/DeckLinkAPIDispatch.cpp
 
 # Base flags
-CXXFLAGS += -Wno-multichar -I$(SDK_PATH) -I$(WEBSOCKETPP_PATH) -I$(ASIO_PATH)/include -DASIO_STANDALONE -std=c++11 -I./src
+CXXFLAGS += -Wno-multichar -I$(SDK_PATH) -I$(WEBSOCKETPP_PATH) -I$(ASIO_PATH)/include -DASIO_STANDALONE -std=c++17 -I./src
 LDFLAGS += -lm -ldl -lpthread -lfftw3
+
+# --- WebRTC Specific Flags ---
+# NOTE: Using the locally built libdatachannel library.
+WEBRTC_CXXFLAGS = -Ilibs/libdatachannel/install/include
+WEBRTC_LDFLAGS = -Llibs/libdatachannel/install/lib -ldatachannel -ljuice -lusrsctp -lsrtp2 -lssl -lcrypto -lpthread
 
 # Conditional sources and flags for Video Processing
 ifneq ($(ENABLE_VIDEO_PROCESSING),)
 	SRCS += src/VideoProcessor.cpp
-	CXXFLAGS += -DENABLE_VIDEO_PROCESSING
-	LDFLAGS += -lavcodec -lavfilter -lavformat -lavdevice -lavutil -lswscale -lswresample
+	CXXFLAGS += -DENABLE_VIDEO_PROCESSING $(WEBRTC_CXXFLAGS)
+	LDFLAGS += -lavcodec -lavfilter -lavformat -lavdevice -lavutil -lswscale -lswresample $(WEBRTC_LDFLAGS)
 else
 	LDFLAGS += -lavfilter -lavformat -lavdevice -lavutil
 endif

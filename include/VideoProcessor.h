@@ -4,6 +4,9 @@
 #include "DeckLinkAPI.h"
 #include <string>
 #include <functional>
+#include <memory>
+
+#include "WebRTC.h"
 
 // FFmpeg headers
 extern "C" {
@@ -32,6 +35,8 @@ private:
     AVPacket* packet;
     SwsContext* swsContext;
     AVPixelFormat sourcePixelFormat;
+
+    std::shared_ptr<WebRTC> webrtc_handler;
 
     void cleanup();
 };

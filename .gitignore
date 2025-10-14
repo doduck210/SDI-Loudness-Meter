@@ -1,6 +1,7 @@
 # Dependencies
 /node_modules
 /libs/
+/decklink_webrtc/
 
 # Build artifacts
 /Capture
