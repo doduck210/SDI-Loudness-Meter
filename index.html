@@ -109,9 +109,16 @@
             background-color: #000;
             box-sizing: border-box;
         }
-        .vectorscope-container img {
+        .vectorscope-container img, .video-container video {
             width: 100%;
             height: 100%;
+        }
+        .video-container {
+            width: 640px;
+            height: 360px;
+            border: 2px solid #34495e;
+            background-color: #000;
+            box-sizing: border-box;
         }
         .lkfs-widget-container {
              width: 250px;
@@ -404,6 +411,13 @@
                     <img src="/vectorscope.mjpeg" alt="Vectorscope Stream">
                 </div>
             </div>
+
+            <div class="widget-container">
+                <h2>Video</h2>
+                <div class="video-container">
+                    <video id="rawVideo" autoplay playsinline muted></video>
+                </div>
+            </div>
         </div>
         <div class="monitor-row">
             <div class="widget-container eq-widget-container">
@@ -428,6 +442,7 @@
     </div>
 
     <script>
+        // Existing DOM element getters
         const leftMeterFill = document.getElementById('leftMeterFill');
         const rightMeterFill = document.getElementById('rightMeterFill');
         const leftMeterValue = document.getElementById('leftMeterValue');
@@ -442,15 +457,11 @@
         const eqCanvas = document.getElementById('eqCanvas');
         const eqCtx = eqCanvas.getContext('2d');
         const correlatorBar = document.getElementById('correlatorBar');
-
-        // Settings Menu
         const settingsToggle = document.getElementById('settings-toggle');
         const settingsContent = document.getElementById('settings-content');
         const leftChannelSelect = document.getElementById('left-channel');
         const rightChannelSelect = document.getElementById('right-channel');
         const saveSettingsBtn = document.getElementById('save-settings');
-
-        // Status Display
         const statusToggle = document.getElementById('status-toggle');
         const statusContent = document.getElementById('status-content');
         const cpuUsageSpan = document.getElementById('cpu-usage');
@@ -458,269 +469,126 @@
 
         let isIntegrating = false;
 
-        const ws = new WebSocket(`ws://${window.location.host}`);
+        // --- WebRTC Globals ---
+        const pc = new RTCPeerConnection();
+        let makingAnswer = false;
+        let pendingRemoteOffer = null;
+        let currentPubId = null;
+        const pendingIceCandidates = [];
 
+        // --- WebSocket connection (now with role=sub) ---
+        const ws = new WebSocket(`ws://${window.location.host}/?role=sub`);
+
+        // --- WebRTC Functions (from viewer.js) ---
+        const handleOffer = async (sdp) => {
+            if (makingAnswer) {
+                pendingRemoteOffer = sdp;
+                return;
+            }
+            makingAnswer = true;
+
+            try {
+                if (pc.signalingState !== "stable") {
+                    try {
+                        await pc.setLocalDescription({ type: "rollback" });
+                    } catch (e) {
+                        console.warn("Rollback failed (this is often fine)", e);
+                    }
+                }
+
+                await pc.setRemoteDescription({ type: "offer", sdp });
+
+                let vtrans = pc.getTransceivers().find(t => t.receiver && t.receiver.track?.kind === "video");
+                if (!vtrans) {
+                    vtrans = pc.addTransceiver("video", { direction: "recvonly" });
+                }
+
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp, to: currentPubId }));
+
+                while (pendingIceCandidates.length) {
+                    const ice = pendingIceCandidates.shift();
+                    try {
+                        await pc.addIceCandidate(ice);
+                    } catch (e) {
+                        console.warn("addIceCandidate(pending) failed", e, ice);
+                    }
+                }
+            } catch (e) {
+                console.error("handleOffer failed:", e);
+            }
+            finally {
+                makingAnswer = false;
+                if (pendingRemoteOffer) {
+                    const next = pendingRemoteOffer;
+                    pendingRemoteOffer = null;
+                    handleOffer(next);
+                }
+            }
+        };
+
+        pc.ontrack = (e) => {
+            const videoElement = document.getElementById('rawVideo');
+            if (videoElement && e.track.kind === 'video') {
+                videoElement.srcObject = e.streams[0];
+                console.log("Attached remote video track to #rawVideo.");
+            }
+        };
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                ws.send(JSON.stringify({
+                    type: "candidate",
+                    candidate: e.candidate.candidate,
+                    mid: e.candidate.sdpMid,
+                    sdpMLineIndex: e.candidate.sdpMLineIndex ?? 0,
+                    to: currentPubId,
+                }));
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => console.log("PC ICE State:", pc.iceConnectionState);
+        pc.onconnectionstatechange = () => console.log("PC Connection State:", pc.connectionState);
+
+        // --- WebSocket Listeners ---
         ws.onopen = () => {
             console.log('Connected to WebSocket server');
-            // Request current settings when connected
+            // Request WebRTC offer and existing settings
+            ws.send(JSON.stringify({ type: 'need-offer' }));
             ws.send(JSON.stringify({ command: 'get_settings' }));
         };
 
-        toggleBtn.onclick = () => {
-            const command = isIntegrating ? 'stop_integration' : 'start_integration';
-            ws.send(JSON.stringify({ command: command }));
-            console.log('Sent command: ' + command);
-        };
-
-        // --- Settings Menu Logic ---
-        function populateChannelSelectors() {
-            for (let i = 0; i < 16; i++) {
-                const optionL = document.createElement('option');
-                optionL.value = i;
-                optionL.textContent = `Channel ${i + 1}`;
-                leftChannelSelect.appendChild(optionL);
-
-                const optionR = document.createElement('option');
-                optionR.value = i;
-                optionR.textContent = `Channel ${i + 1}`;
-                rightChannelSelect.appendChild(optionR);
-            }
-        }
-
-        settingsToggle.onclick = () => {
-            const isDisplayed = settingsContent.style.display === 'flex';
-            settingsContent.style.display = isDisplayed ? 'none' : 'flex';
-        };
-
-        saveSettingsBtn.onclick = () => {
-            const leftChannel = leftChannelSelect.value;
-            const rightChannel = rightChannelSelect.value;
-
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ leftChannel, rightChannel }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Settings saved:', data);
-                alert('Settings saved and Capture process restarted.');
-                settingsContent.style.display = 'none';
-            })
-            .catch(error => {
-                console.error('Error saving settings:', error);
-                alert('Error saving settings.');
-            });
-        };
-        
-        populateChannelSelectors();
-        // --- End of Settings Menu Logic ---
-
-        // --- Status Display Logic ---
-        statusToggle.onclick = () => {
-            const isDisplayed = statusContent.style.display === 'block';
-            statusContent.style.display = isDisplayed ? 'none' : 'block';
-        };
-        // --- End of Status Display Logic ---
-
-
-        const minDb = -60.0;
-        const maxDb = 0.0;
-        const minDbEq = -40.0;
-        const maxDbEq = 5.0;
-
-        let meterState = {
-            left: { latestValue: minDb, displayValue: minDb },
-            right: { latestValue: minDb, displayValue: minDb }
-        };
-
-        const numEqBands = 64;
-        let eqState = {
-            bands: Array.from({ length: numEqBands }, () => ({ latestValue: minDbEq, displayValue: minDbEq }))
-        };
-
-        let correlatorState = { latestValue: 0, displayValue: 0 };
-
-        function dbToPercentage(db) {
-            let percentage = ((db - minDb) / (maxDb - minDb)) * 100;
-            return Math.max(0, Math.min(100, percentage));
-        }
-
-        function createScale() {
-            const scalePoints = [0, -6, -12, -18, -24, -30, -40, -50, -60];
-            scalePoints.forEach(db => {
-                const mark = document.createElement('div');
-                mark.className = 'scale-mark';
-                const percentage = dbToPercentage(db);
-                mark.style.bottom = `${percentage}%`;
-                mark.innerHTML = `<span>${db}</span>`;
-                meterScale.appendChild(mark);
-            });
-        }
-
-        function updateMeterDOM(fillElement, dbValue) {
-            const percentage = dbToPercentage(dbValue);
-            fillElement.style.height = `${percentage}%`;
-
-            if (dbValue > -6) {
-                fillElement.style.backgroundColor = '#e74c3c'; // Red
-            } else if (dbValue > -12) {
-                fillElement.style.backgroundColor = '#f1c40f'; // Yellow
-            } else {
-                fillElement.style.backgroundColor = '#27ae60'; // Green
-            }
-        }
-
-        function drawEq() {
-            const canvas = eqCtx.canvas;
-            const axisYWidth = 30;
-            const axisXHeight = 20;
-            const meterWidth = canvas.width - axisYWidth;
-            const meterHeight = canvas.height - axisXHeight;
-            eqCtx.clearRect(0, 0, canvas.width, canvas.height);
-            eqCtx.save();
-            eqCtx.translate(axisYWidth, 0);
-
-            // Draw Bars
-            const barWidth = meterWidth / numEqBands;
-            for (let i = 0; i < numEqBands; i++) {
-                const db = eqState.bands[i].displayValue;
-                const percent = (db - minDbEq) / (maxDbEq - minDbEq);
-                const barHeight = Math.max(0, meterHeight * percent);
-
-                if (db > 0) {
-                    eqCtx.fillStyle = '#e74c3c'; // Red
-                } else if (db > -9) {
-                    eqCtx.fillStyle = '#f1c40f'; // Yellow
-                } else {
-                    eqCtx.fillStyle = '#27ae60'; // Green
-                }
-
-                const x = i * barWidth;
-                const y = meterHeight - barHeight;
-                eqCtx.fillRect(x, y, barWidth - 1, barHeight);
-            }
-
-            // Draw X-Axis (Frequency)
-            eqCtx.fillStyle = '#bdc3c7';
-            eqCtx.font = '10px sans-serif';
-            eqCtx.textAlign = 'center';
-            const freqLabels = [30, 60, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-            const min_log_freq = Math.log(20);
-            const max_log_freq = Math.log(20000);
-            const log_range = max_log_freq - min_log_freq;
-
-            freqLabels.forEach(freq => {
-                const log_freq = Math.log(freq);
-                const x = meterWidth * (log_freq - min_log_freq) / log_range;
-                eqCtx.fillText(freq < 1000 ? freq : `${freq/1000}k`, x, canvas.height - 5);
-            });
-
-            eqCtx.restore();
-
-            // Draw Y-Axis (dB)
-            eqCtx.save();
-            eqCtx.fillStyle = '#bdc3c7';
-            eqCtx.font = '10px sans-serif';
-            eqCtx.textAlign = 'right';
-            const dbLabels = [0, -9, -18, -27, -36];
-            dbLabels.forEach(db => {
-                const percent = (db - minDbEq) / (maxDbEq - minDbEq);
-                const y = meterHeight - (meterHeight * percent);
-                eqCtx.fillText(db, axisYWidth - 8, y + 3);
-
-                eqCtx.strokeStyle = '#4a627a';
-                eqCtx.beginPath();
-                eqCtx.moveTo(axisYWidth - 4, y);
-                eqCtx.lineTo(canvas.width, y);
-                eqCtx.stroke();
-            });
-            eqCtx.restore();
-        }
-
-        let lastFrameTime = performance.now();
-        const fallRate = 15; // dB per second
-
-        function animationLoop(currentTime) {
-            const deltaTime = currentTime - lastFrameTime;
-            lastFrameTime = currentTime;
-
-            // Level meter animation
-            let leftState = meterState.left;
-            if (leftState.latestValue > leftState.displayValue) {
-                leftState.displayValue = leftState.latestValue;
-            } else {
-                leftState.displayValue = Math.max(leftState.displayValue - fallRate * (deltaTime / 1000), minDb);
-            }
-
-            let rightState = meterState.right;
-            if (rightState.latestValue > rightState.displayValue) {
-                rightState.displayValue = rightState.latestValue;
-            }
-
-            else {
-                rightState.displayValue = Math.max(rightState.displayValue - fallRate * (deltaTime / 1000), minDb);
-            }
-
-            updateMeterDOM(leftMeterFill, leftState.displayValue);
-            updateMeterDOM(rightMeterFill, rightState.displayValue);
-            leftMeterValue.textContent = leftState.displayValue.toFixed(1);
-            rightMeterValue.textContent = rightState.displayValue.toFixed(1);
-
-            // EQ meter animation
-            for (let i = 0; i < numEqBands; i++) {
-                let band = eqState.bands[i];
-                if (band.latestValue > band.displayValue) {
-                    band.displayValue = band.latestValue;
-                } else {
-                    band.displayValue = Math.max(band.displayValue - fallRate * (deltaTime / 1000), minDbEq);
-                }
-            }
-            drawEq(); // Redraw EQ on every frame
-
-            // Correlator animation
-            const corrFallRate = 2.0; // Fall rate in units per second.
-            const decay = corrFallRate * (deltaTime / 1000);
-
-            // If the new value has a larger magnitude, it becomes the new peak.
-            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) {
-                correlatorState.displayValue = correlatorState.latestValue;
-            }
-
-            // The displayed value always falls towards zero.
-            if (correlatorState.displayValue > 0) {
-                correlatorState.displayValue = Math.max(0, correlatorState.displayValue - decay);
-            } else if (correlatorState.displayValue < 0) {
-                correlatorState.displayValue = Math.min(0, correlatorState.displayValue + decay);
-            }
-
-            // A new value from the websocket can override the falling value if its magnitude is greater.
-            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) {
-                correlatorState.displayValue = correlatorState.latestValue;
-            }
-
-            // Update the DOM
-            if (correlatorBar) {
-                const displayValue = correlatorState.displayValue;
-                if (displayValue >= 0) {
-                    correlatorBar.style.left = '50%';
-                    correlatorBar.style.width = (displayValue * 50) + '%';
-                } else {
-                    const width = -displayValue * 50;
-                    correlatorBar.style.left = (50 - width) + '%';
-                    correlatorBar.style.width = width + '%';
-                }
-            }
-
-            requestAnimationFrame(animationLoop);
-        }
-
-        ws.onmessage = event => {
+        ws.onmessage = async (event) => {
             try {
-                const data = JSON.parse(event.data);
+                const text = typeof event.data === "string" ? event.data : await event.data.text();
+                const data = JSON.parse(text);
 
+                // --- WebRTC Signaling Handler ---
+                if (data.type === 'offer') {
+                    console.log("Received WebRTC offer.");
+                    currentPubId = data.from || currentPubId;
+                    handleOffer(data.sdp);
+                    return; // Consumed by WebRTC handler
+                } else if (data.type === 'candidate') {
+                    try {
+                        const ice = {
+                            candidate: data.candidate,
+                            sdpMLineIndex: typeof data.sdpMLineIndex === "number" ? data.sdpMLineIndex : 0,
+                            sdpMid: data.mid ?? null,
+                        };
+                        if (pc.remoteDescription) {
+                            await pc.addIceCandidate(ice);
+                        } else {
+                            pendingIceCandidates.push(ice);
+                        }
+                    } catch (e) {
+                        console.error("addIceCandidate failed", e, data);
+                    }
+                    return; // Consumed by WebRTC handler
+                }
+
+                // --- Existing Telemetry Handler ---
                 if (data.type === 'settings') {
                     leftChannelSelect.value = data.leftAudioChannel;
                     rightChannelSelect.value = data.rightAudioChannel;
@@ -776,7 +644,6 @@
                 if (data.type === 'lra') {
                     const currentLra = data.value;
                     lraValue.textContent = currentLra.toFixed(1);
-                    // Map LRA value to bar width. Assuming a max LRA of 25 for 100% width.
                     const lraPercentage = Math.min(100, (currentLra / 25) * 100);
                     lraBar.style.width = `${lraPercentage}%`;
                 }
@@ -801,6 +668,177 @@
             integratedValue.textContent = 'Error';
             lraValue.textContent = 'Error';
         };
+
+        // --- Existing Functions and Animation Loop ---
+        toggleBtn.onclick = () => {
+            const command = isIntegrating ? 'stop_integration' : 'start_integration';
+            ws.send(JSON.stringify({ command: command }));
+            console.log('Sent command: ' + command);
+        };
+
+        function populateChannelSelectors() {
+            for (let i = 0; i < 16; i++) {
+                const optionL = document.createElement('option');
+                optionL.value = i;
+                optionL.textContent = `Channel ${i + 1}`;
+                leftChannelSelect.appendChild(optionL);
+                const optionR = document.createElement('option');
+                optionR.value = i;
+                optionR.textContent = `Channel ${i + 1}`;
+                rightChannelSelect.appendChild(optionR);
+            }
+        }
+
+        settingsToggle.onclick = () => {
+            const isDisplayed = settingsContent.style.display === 'flex';
+            settingsContent.style.display = isDisplayed ? 'none' : 'flex';
+        };
+
+        saveSettingsBtn.onclick = () => {
+            const leftChannel = leftChannelSelect.value;
+            const rightChannel = rightChannelSelect.value;
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ leftChannel, rightChannel }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Settings saved:', data);
+                alert('Settings saved and Capture process restarted.');
+                settingsContent.style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error saving settings:', error);
+                alert('Error saving settings.');
+            });
+        };
+        
+        populateChannelSelectors();
+
+        statusToggle.onclick = () => {
+            const isDisplayed = statusContent.style.display === 'block';
+            statusContent.style.display = isDisplayed ? 'none' : 'block';
+        };
+
+        const minDb = -60.0, maxDb = 0.0, minDbEq = -40.0, maxDbEq = 5.0;
+        let meterState = { left: { latestValue: minDb, displayValue: minDb }, right: { latestValue: minDb, displayValue: minDb } };
+        const numEqBands = 64;
+        let eqState = { bands: Array.from({ length: numEqBands }, () => ({ latestValue: minDbEq, displayValue: minDbEq })) };
+        let correlatorState = { latestValue: 0, displayValue: 0 };
+
+        function dbToPercentage(db) {
+            let percentage = ((db - minDb) / (maxDb - minDb)) * 100;
+            return Math.max(0, Math.min(100, percentage));
+        }
+
+        function createScale() {
+            const scalePoints = [0, -6, -12, -18, -24, -30, -40, -50, -60];
+            scalePoints.forEach(db => {
+                const mark = document.createElement('div');
+                mark.className = 'scale-mark';
+                const percentage = dbToPercentage(db);
+                mark.style.bottom = `${percentage}%`;
+                mark.innerHTML = `<span>${db}</span>`;
+                meterScale.appendChild(mark);
+            });
+        }
+
+        function updateMeterDOM(fillElement, dbValue) {
+            const percentage = dbToPercentage(dbValue);
+            fillElement.style.height = `${percentage}%`;
+            if (dbValue > -6) fillElement.style.backgroundColor = '#e74c3c';
+            else if (dbValue > -12) fillElement.style.backgroundColor = '#f1c40f';
+            else fillElement.style.backgroundColor = '#27ae60';
+        }
+
+        function drawEq() {
+            const canvas = eqCtx.canvas, axisYWidth = 30, axisXHeight = 20;
+            const meterWidth = canvas.width - axisYWidth, meterHeight = canvas.height - axisXHeight;
+            eqCtx.clearRect(0, 0, canvas.width, canvas.height);
+            eqCtx.save();
+            eqCtx.translate(axisYWidth, 0);
+            const barWidth = meterWidth / numEqBands;
+            for (let i = 0; i < numEqBands; i++) {
+                const db = eqState.bands[i].displayValue;
+                const percent = (db - minDbEq) / (maxDbEq - minDbEq);
+                const barHeight = Math.max(0, meterHeight * percent);
+                if (db > 0) eqCtx.fillStyle = '#e74c3c';
+                else if (db > -9) eqCtx.fillStyle = '#f1c40f';
+                else eqCtx.fillStyle = '#27ae60';
+                const x = i * barWidth;
+                const y = meterHeight - barHeight;
+                eqCtx.fillRect(x, y, barWidth - 1, barHeight);
+            }
+            eqCtx.fillStyle = '#bdc3c7';
+            eqCtx.font = '10px sans-serif';
+            eqCtx.textAlign = 'center';
+            const freqLabels = [30, 60, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+            const min_log_freq = Math.log(20), max_log_freq = Math.log(20000), log_range = max_log_freq - min_log_freq;
+            freqLabels.forEach(freq => {
+                const log_freq = Math.log(freq);
+                const x = meterWidth * (log_freq - min_log_freq) / log_range;
+                eqCtx.fillText(freq < 1000 ? freq : `${freq/1000}k`, x, canvas.height - 5);
+            });
+            eqCtx.restore();
+            eqCtx.save();
+            eqCtx.fillStyle = '#bdc3c7';
+            eqCtx.font = '10px sans-serif';
+            eqCtx.textAlign = 'right';
+            const dbLabels = [0, -9, -18, -27, -36];
+            dbLabels.forEach(db => {
+                const percent = (db - minDbEq) / (maxDbEq - minDbEq);
+                const y = meterHeight - (meterHeight * percent);
+                eqCtx.fillText(db, axisYWidth - 8, y + 3);
+                eqCtx.strokeStyle = '#4a627a';
+                eqCtx.beginPath();
+                eqCtx.moveTo(axisYWidth - 4, y);
+                eqCtx.lineTo(canvas.width, y);
+                eqCtx.stroke();
+            });
+            eqCtx.restore();
+        }
+
+        let lastFrameTime = performance.now();
+        const fallRate = 15;
+
+        function animationLoop(currentTime) {
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+            let leftState = meterState.left;
+            if (leftState.latestValue > leftState.displayValue) leftState.displayValue = leftState.latestValue;
+            else leftState.displayValue = Math.max(leftState.displayValue - fallRate * (deltaTime / 1000), minDb);
+            let rightState = meterState.right;
+            if (rightState.latestValue > rightState.displayValue) rightState.displayValue = rightState.latestValue;
+            else rightState.displayValue = Math.max(rightState.displayValue - fallRate * (deltaTime / 1000), minDb);
+            updateMeterDOM(leftMeterFill, leftState.displayValue);
+            updateMeterDOM(rightMeterFill, rightState.displayValue);
+            leftMeterValue.textContent = leftState.displayValue.toFixed(1);
+            rightMeterValue.textContent = rightState.displayValue.toFixed(1);
+            for (let i = 0; i < numEqBands; i++) {
+                let band = eqState.bands[i];
+                if (band.latestValue > band.displayValue) band.displayValue = band.latestValue;
+                else band.displayValue = Math.max(band.displayValue - fallRate * (deltaTime / 1000), minDbEq);
+            }
+            drawEq();
+            const corrFallRate = 2.0, decay = corrFallRate * (deltaTime / 1000);
+            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) correlatorState.displayValue = correlatorState.latestValue;
+            if (correlatorState.displayValue > 0) correlatorState.displayValue = Math.max(0, correlatorState.displayValue - decay);
+            else if (correlatorState.displayValue < 0) correlatorState.displayValue = Math.min(0, correlatorState.displayValue + decay);
+            if (Math.abs(correlatorState.latestValue) > Math.abs(correlatorState.displayValue)) correlatorState.displayValue = correlatorState.latestValue;
+            if (correlatorBar) {
+                const displayValue = correlatorState.displayValue;
+                if (displayValue >= 0) {
+                    correlatorBar.style.left = '50%';
+                    correlatorBar.style.width = (displayValue * 50) + '%';
+                } else {
+                    const width = -displayValue * 50;
+                    correlatorBar.style.left = (50 - width) + '%';
+                    correlatorBar.style.width = width + '%';
+                }
+            }
+            requestAnimationFrame(animationLoop);
+        }
 
         createScale();
         requestAnimationFrame(animationLoop);

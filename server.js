@@ -6,11 +6,17 @@ const WebSocket = require('ws');
 const sharp = require('sharp');
 const express = require('express');
 const { spawn } = require('child_process');
+const { randomUUID } = require("crypto");
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// --- WebRTC Signaling Data Structures ---
+const rooms = new Map();
+const peers = new Map();
+
+// --- Existing Data Structures ---
 const mjpegClients = new Set();
 let isIntegrating = false;
 let captureProcess = null;
@@ -21,6 +27,20 @@ let channelSettings = {
     rightAudioChannel: 1,
     device: 0,
     mode: -1
+};
+
+// --- WebRTC Helper Functions ---
+const getRoom = (room) => {
+    if (!rooms.has(room)) {
+        rooms.set(room, { pubs: new Set(), subs: new Set() });
+    }
+    return rooms.get(room);
+};
+
+const safeSend = (ws, obj) => {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+    }
 };
 
 // --- System Stats ---
@@ -146,88 +166,129 @@ app.get('/vectorscope.mjpeg', (req, res) => {
 });
 
 // --- WebSocket Handling ---
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
     console.log('WebSocket client connected');
+
+    // --- WebRTC Signaling Connection Logic ---
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const role = url.searchParams.get("role") || "sub";
+    const room = url.searchParams.get("room") || "default";
+    const id = randomUUID();
+
+    peers.set(ws, { id, role, room });
+    const R = getRoom(room);
+    (role === "pub" ? R.pubs : R.subs).add(ws);
+    console.log(`[JOIN] room=${room} role=${role} id=${id}`);
+
+    // If a new subscriber joins, ask the publisher to send an offer.
+    if (role === "sub") {
+        for (const pub of R.pubs) {
+            safeSend(pub, { type: "need-offer", to: id, room });
+        }
+    }
+
+    // --- Existing Functionality ---
     ws.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
     ws.send(JSON.stringify({ type: 'settings', ...channelSettings }));
 
     ws.on('message', message => {
+        let msg;
         try {
-            const msg = JSON.parse(message);
-
-            if (msg.command) {
-                if (msg.command === 'start_integration') {
-                    isIntegrating = true;
-                } else if (msg.command === 'stop_integration') {
-                    isIntegrating = false;
-                }
-
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(msg));
-                    }
-                });
-
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
-                    }
-                });
-            } else if (msg.type === 'lkfs') {
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ loudness: msg.value }));
-                    }
-                });
-            } else if (msg.type === 's_lkfs') {
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ short_term_loudness: msg.value }));
-                    }
-                });
-            } else if (msg.type === 'i_lkfs') {
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ integrated_loudness: msg.value }));
-                    }
-                });
-            } else if (msg.type === 'vectorscope' && msg.data) {
-                const ppmFrame = Buffer.from(msg.data, 'base64');
-                const headerMatch = ppmFrame.toString('ascii', 0, 30).match(/P6\n(\d+)\s(\d+)\n255\n/);
-                if (!headerMatch) return;
-
-                const width = parseInt(headerMatch[1], 10);
-                const height = parseInt(headerMatch[2], 10);
-
-                sharp(ppmFrame, { raw: { width, height, channels: 3 } })
-                    .jpeg()
-                    .toBuffer()
-                    .then(jpegFrame => {
-                        mjpegClients.forEach(client => {
-                            client.write('--frame\r\n');
-                            client.write('Content-Type: image/jpeg\r\n');
-                            client.write(`Content-Length: ${jpegFrame.length}\r\n`);
-                            client.write('\r\n');
-                            client.write(jpegFrame);
-                            client.write('\r\n');
-                        });
-                    })
-                    .catch(err => {});
-            } else {
-                // Broadcast all other messages
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(msg));
-                    }
-                });
-            }
+            const txt = message instanceof Buffer ? message.toString() : message;
+            msg = JSON.parse(txt);
         } catch (e) {
             // console.error('Failed to parse WebSocket message:', e);
+            return;
+        }
+
+        const me = peers.get(ws);
+        if (!me) return;
+
+        // --- WebRTC Signaling Message Routing ---
+        if (msg.to) {
+            msg.from = me.id;
+            const R = rooms.get(me.room);
+            if (!R) return;
+
+            for (const peer of [...R.pubs, ...R.subs]) {
+                const meta = peers.get(peer);
+                if (meta && meta.id === msg.to) {
+                    safeSend(peer, msg);
+                    return; // Message routed, do not process further.
+                }
+            }
+        }
+
+        // --- Existing Message Handling ---
+        if (msg.command) {
+            if (msg.command === 'start_integration') {
+                isIntegrating = true;
+            } else if (msg.command === 'stop_integration') {
+                isIntegrating = false;
+            }
+            // Broadcast command to all clients
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(msg));
+                }
+            });
+            // Send updated integration state to all clients
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
+                }
+            });
+        } else if (msg.type === 'lkfs' || msg.type === 's_lkfs' || msg.type === 'i_lkfs') {
+            // Broadcast loudness data
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(msg));
+                }
+            });
+        } else if (msg.type === 'vectorscope' && msg.data) {
+            const ppmFrame = Buffer.from(msg.data, 'base64');
+            const headerMatch = ppmFrame.toString('ascii', 0, 30).match(/P6\n(\d+)\s(\d+)\n255\n/);
+            if (!headerMatch) return;
+
+            const width = parseInt(headerMatch[1], 10);
+            const height = parseInt(headerMatch[2], 10);
+
+            sharp(ppmFrame, { raw: { width, height, channels: 3 } })
+                .jpeg()
+                .toBuffer()
+                .then(jpegFrame => {
+                    mjpegClients.forEach(client => {
+                        client.write('--frame\r\n');
+                        client.write('Content-Type: image/jpeg\r\n');
+                        client.write(`Content-Length: ${jpegFrame.length}\r\n`);
+                        client.write('\r\n');
+                        client.write(jpegFrame);
+                        client.write('\r\n');
+                    });
+                })
+                .catch(err => {});
+        } else {
+            // Broadcast any other messages (default behavior)
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(msg));
+                }
+            });
         }
     });
 
     ws.on('close', () => {
         console.log('WebSocket client disconnected');
+        const meta = peers.get(ws);
+        if (!meta) return;
+
+        const { role, room, id } = meta;
+        const R = rooms.get(room);
+        if (R) {
+            (role === "pub" ? R.pubs : R.subs).delete(ws);
+            peers.delete(ws);
+            console.log(`[LEAVE] room=${room} role=${role} id=${id}`);
+        }
     });
 });
 
