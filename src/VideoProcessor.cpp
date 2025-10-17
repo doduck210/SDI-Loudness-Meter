@@ -1,5 +1,6 @@
 #include "VideoProcessor.h"
 #include <iostream>
+#include <libavutil/error.h>
 
 // const char* output_filename = "output.mp4"; // No longer needed
 
@@ -66,6 +67,7 @@ void VideoProcessor::cleanup() {
     std::cerr << "VideoProcessor cleaned up." << std::endl;
 }
 
+
 bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, BMDTimeValue frameDuration, BMDPixelFormat pixelFormat) {
     cleanup();
 
@@ -75,8 +77,8 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
         return false;
     }
 
-    const int dst_width = 480;
-    const int dst_height = 270;
+    const int dst_width = 640;
+    const int dst_height = 360;
 
     // avformat_alloc_output_context2(&formatContext, NULL, NULL, output_filename); // REMOVED
     // if (!formatContext) { std::cerr << "Could not create output context" << std::endl; return false; }
@@ -90,18 +92,23 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
     codecContext = avcodec_alloc_context3(codec);
     if (!codecContext) { std::cerr << "Could not allocate video codec context." << std::endl; return false; }
 
-    codecContext->bit_rate = 400000;
+    // Settings matched to the example's VideoEncoder.h for similar quality/performance
+    codecContext->bit_rate = 10000000; // 10 Mbps
     codecContext->width = dst_width;
     codecContext->height = dst_height;
-    // stream->time_base = (AVRational){(int)frameDuration, (int)timeScale}; // REMOVED
-    codecContext->time_base = (AVRational){(int)frameDuration, (int)timeScale};
-    codecContext->framerate = (AVRational){(int)timeScale, (int)frameDuration};
-    codecContext->gop_size = 10;
-    codecContext->max_b_frames = 1;
+    codecContext->time_base = (AVRational){(int)frameDuration, (int)timeScale}; // Use source timebase
+    codecContext->framerate = (AVRational){(int)timeScale, (int)frameDuration}; // Use source framerate
+    codecContext->gop_size = 30; // GOP size of 30
+    codecContext->max_b_frames = 0; // No B-frames
     codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
+    codecContext->profile = FF_PROFILE_H264_MAIN; // H.264 Main Profile
+    codecContext->level = 31; // H.264 Level 3.1
 
     av_opt_set(codecContext->priv_data, "preset", "ultrafast", 0);
     av_opt_set(codecContext->priv_data, "tune", "zerolatency", 0);
+    
+    // Repeat SPS/PPS headers for WebRTC compatibility
+    av_opt_set(codecContext->priv_data, "x264-params", "repeat-headers=1", 0);
 
     if (avcodec_open2(codecContext, codec, NULL) < 0) { std::cerr << "Could not open codec." << std::endl; return false; }
 
@@ -115,7 +122,7 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
 
     try {
         webrtc_handler = std::make_shared<WebRTC>("publisher");
-        webrtc_handler->addVideoSender("video-raw", "stream-raw", "video-raw", 43);
+        webrtc_handler->RegisterH264Track("video-raw", "stream-raw", "video-raw", 43);
     } catch (const std::exception& e) {
         std::cerr << "Failed to initialize WebRTC: " << e.what() << std::endl;
         return false;
@@ -158,20 +165,32 @@ void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame, const std::fu
     static int64_t pts = 0;
     dstFrame->pts = pts++;
 
-    if (avcodec_send_frame(codecContext, dstFrame) >= 0) {
-        while (avcodec_receive_packet(codecContext, packet) >= 0) {
-            // av_packet_rescale_ts(packet, codecContext->time_base, formatContext->streams[0]->time_base); // Not needed for WebRTC
-            // packet->stream_index = 0;
+    int send_ret = avcodec_send_frame(codecContext, dstFrame);
+    if (send_ret >= 0) {
+        // fprintf(stderr, "[FFmpeg] avcodec_send_frame success\n");
+        while (true) {
+            int recv_ret = avcodec_receive_packet(codecContext, packet);
+            if (recv_ret == AVERROR(EAGAIN) || recv_ret == AVERROR_EOF) {
+                // fprintf(stderr, "[FFmpeg] avcodec_receive_packet returned EAGAIN or EOF\n");
+                break;
+            } else if (recv_ret < 0) {
+                char errStr[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_make_error_string(errStr, AV_ERROR_MAX_STRING_SIZE, recv_ret);
+                fprintf(stderr, "[FFmpeg] Error during encoding: avcodec_receive_packet failed with error %s\n", errStr);
+                break;
+            }
 
+            // fprintf(stderr, "[WebRTC] Encoding complete, packet size: %d\n", packet->size);
             if (webrtc_handler) {
-                webrtc_handler->sendEncoded("video-raw", packet);
+                webrtc_handler->SendEncoded("video-raw", packet);
             }
             
-            // if (av_interleaved_write_frame(formatContext, packet) < 0) {
-            //     std::cerr << "Error writing frame to file" << std::endl;
-            // }
             av_packet_unref(packet);
         }
+    } else {
+        char errStr[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_make_error_string(errStr, AV_ERROR_MAX_STRING_SIZE, send_ret);
+        fprintf(stderr, "[FFmpeg] Error sending frame for encoding: avcodec_send_frame failed with error %s\n", errStr);
     }
 }
 
