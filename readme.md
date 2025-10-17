@@ -17,7 +17,8 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
 *   FFmpeg libraries (development headers).
 *   FFTW3 library (development headers).
 *   Node.js and npm for the web interface.
-*   Asio and WebSocket++ libraries.
+*   `cmake` and `libssl-dev` for building WebRTC dependencies.
+*   Asio, WebSocket++, and libdatachannel libraries.
 
 ## Installation Guide
 
@@ -43,22 +44,42 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
         sudo apt-get install libfftw3-dev
         ```
 
-    *   **Third-party Libraries (Asio & WebSocket++)**:
-        This project uses Asio and WebSocket++. You need to download them and place them in the `libs` directory.
+    *   **Third-party Libraries (Asio, WebSocket++, & libdatachannel)**:
+        This project uses several third-party libraries that need to be placed in the `libs` directory.
+
+        First, ensure you have the necessary build tools for `libdatachannel`:
+        *On Ubuntu/Debian:*
+        ```bash
+        sudo apt-get install cmake libssl-dev
+        ```
+
+        Now, set up the libraries:
         ```bash
         mkdir -p libs
         cd libs
 
-        # Download and extract Asio (version 1.28.1 is required)
+        # 1. Asio (version 1.28.1 is required)
         wget https://downloads.sourceforge.net/project/asio/asio/1.28.1%20(Stable)/asio-1.28.1.tar.gz
         tar -zxvf asio-1.28.1.tar.gz
 
-        # Download WebSocket++
+        # 2. WebSocket++
         git clone https://github.com/zaphoyd/websocketpp.git
+
+        # 3. libdatachannel (for WebRTC)
+        git clone https://github.com/paullouisageneau/libdatachannel.git
+        cd libdatachannel
+        mkdir build
+        cd build
+        cmake .. \
+          -DNO_MEDIA=OFF \
+          -DNO_WEBSOCKET=OFF \
+          -DPREFER_SYSTEM_LIB=ON \
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build . --config Release
         
-        cd ..
+        cd ../../.. # Return to the project root directory
         ```
-        *Note: The Makefile assumes the libraries are located in the `libs` directory. The directory structure should look like `libs/asio-1.28.1/include` and `libs/websocketpp`.*
+        *Note: The Makefile assumes the libraries are located in the `libs` directory. After these steps, your directory structure should include `libs/asio-1.28.1`, `libs/websocketpp`, and `libs/libdatachannel` (with build artifacts inside it).*
 
     *   **Node.js Dependencies**:
         Install the necessary packages for the web UI.

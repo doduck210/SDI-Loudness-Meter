@@ -22,6 +22,7 @@
             flex-direction: column;
             align-items: center;
             gap: 20px;
+            width: 100%;
         }
         .monitor-row {
             display: flex;
@@ -316,6 +317,39 @@
         .status-row span:last-child {
             text-align: right;
         }
+
+        /* Tab Styles */
+        .tab-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #34495e;
+            width: 90%;
+            max-width: 1200px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: transparent;
+            color: #bdc3c7;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-size: 1.1em;
+        }
+        .tab-btn.active {
+            color: #ecf0f1;
+            border-bottom: 3px solid #3498db;
+        }
+        .tab-content {
+            display: none;
+            width: 100%;
+            justify-content: center;
+        }
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -336,93 +370,103 @@
     </div>
 
     <div class="main-container">
-        <h1>Ducky's Audio Monitor</h1>
-        <div class="monitor-row">
-            <div class="widget-container levels-widget-container">
-                <h2>Levels</h2>
-                <div class="level-meter-container">
-                    <div class="scale-container" id="meterScale"></div>
-                    <div class="level-meter">
-                        <div class="meter-fill" id="leftMeterFill"></div>
-                        <span class="meter-current-value" id="leftMeterValue">-inf</span>
-                        <span class="meter-label">L</span>
-                    </div>
-                    <div class="level-meter">
-                        <div class="meter-fill" id="rightMeterFill"></div>
-                        <span class="meter-current-value" id="rightMeterValue">-inf</span>
-                        <span class="meter-label">R</span>
-                    </div>
-                </div>
-            </div>
+        <h1>Ducky's Monitor</h1>
 
-            <div class="widget-container lkfs-widget-container">
-                <h2>LKFS</h2>
-                <div class="lkfs-display">
-                    <div class="lkfs-row">
-                        <span class="lkfs-label">M :</span>
-                        <span class="lkfs-value" id="momentaryValue">-inf</span>
-                        <button class="placeholder-button">Start</button>
-                    </div>
-                    <div class="lkfs-row">
-                        <span class="lkfs-label">S :</span>
-                        <span class="lkfs-value" id="shortTermValue">-inf</span>
-                        <button class="placeholder-button">Start</button>
-                    </div>
-                    <div class="lkfs-row">
-                        <span class="lkfs-label">I :</span>
-                        <span class="lkfs-value" id="integratedValue">-inf</span>
-                        <button id="toggleIntegration">Start</button>
-                    </div>
-                </div>
-            </div>
+        <div class="tab-nav">
+            <button id="audio-tab-btn" class="tab-btn active">Audio</button>
+            <button id="video-tab-btn" class="tab-btn">Video</button>
+        </div>
 
-            <div class="widget-container">
-                <h2>Correlator</h2>
-                <div class="correlator-container">
-                    <div class="correlator-bar" id="correlatorBar"></div>
+        <div id="audio-tab-content" class="tab-content active">
+            <div class="monitor-row">
+                <div class="widget-container levels-widget-container">
+                    <h2>Levels</h2>
+                    <div class="level-meter-container">
+                        <div class="scale-container" id="meterScale"></div>
+                        <div class="level-meter">
+                            <div class="meter-fill" id="leftMeterFill"></div>
+                            <span class="meter-current-value" id="leftMeterValue">-inf</span>
+                            <span class="meter-label">L</span>
+                        </div>
+                        <div class="level-meter">
+                            <div class="meter-fill" id="rightMeterFill"></div>
+                            <span class="meter-current-value" id="rightMeterValue">-inf</span>
+                            <span class="meter-label">R</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="correlator-scale">
-                    <span>-</span>
-                    <span>0</span>
-                    <span>+</span>
-                </div>
-            </div>
 
-            <div class="widget-container lkfs-widget-container">
-                <h2>LRA</h2>
-                <div class="lra-display">
-                    <div class="lkfs-row">
-                        <div style="flex-basis: 100%;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8em;">
-                                <span class="lkfs-label">LRA:</span>
-                                <span class="lkfs-value" id="lraValue" style="font-size: 1em;">0.0</span>
-                            </div>
-                            <div class="lra-bar-container">
-                                <div class="lra-bar" id="lraBar"></div>
+                <div class="widget-container lkfs-widget-container">
+                    <h2>LKFS</h2>
+                    <div class="lkfs-display">
+                        <div class="lkfs-row">
+                            <span class="lkfs-label">M :</span>
+                            <span class="lkfs-value" id="momentaryValue">-inf</span>
+                            <button class="placeholder-button">Start</button>
+                        </div>
+                        <div class="lkfs-row">
+                            <span class="lkfs-label">S :</span>
+                            <span class="lkfs-value" id="shortTermValue">-inf</span>
+                            <button class="placeholder-button">Start</button>
+                        </div>
+                        <div class="lkfs-row">
+                            <span class="lkfs-label">I :</span>
+                            <span class="lkfs-value" id="integratedValue">-inf</span>
+                            <button id="toggleIntegration">Start</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="widget-container">
+                    <h2>Correlator</h2>
+                    <div class="correlator-container">
+                        <div class="correlator-bar" id="correlatorBar"></div>
+                    </div>
+                    <div class="correlator-scale">
+                        <span>-</span>
+                        <span>0</span>
+                        <span>+</span>
+                    </div>
+                </div>
+
+                <div class="widget-container lkfs-widget-container">
+                    <h2>LRA</h2>
+                    <div class="lra-display">
+                        <div class="lkfs-row">
+                            <div style="flex-basis: 100%;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8em;">
+                                    <span class="lkfs-label">LRA:</span>
+                                    <span class="lkfs-value" id="lraValue" style="font-size: 1em;">0.0</span>
+                                </div>
+                                <div class="lra-bar-container">
+                                    <div class="lra-bar" id="lraBar"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="widget-container">
-                <h2>Vectorscope</h2>
-                <div class="vectorscope-container">
-                    <img src="/vectorscope.mjpeg" alt="Vectorscope Stream">
+                <div class="widget-container">
+                    <h2>Vectorscope</h2>
+                    <div class="vectorscope-container">
+                        <img src="/vectorscope.mjpeg" alt="Vectorscope Stream">
+                    </div>
                 </div>
             </div>
+            <div class="monitor-row">
+                <div class="widget-container eq-widget-container">
+                    <h2>EQ Meter</h2>
+                    <canvas id="eqCanvas" width="500" height="250"></canvas>
+                </div>
+            </div>
+        </div>
 
+        <div id="video-tab-content" class="tab-content">
             <div class="widget-container">
                 <h2>Video</h2>
                 <div class="video-container">
                     <video id="rawVideo" autoplay playsinline muted></video>
                 </div>
-            </div>
-        </div>
-        <div class="monitor-row">
-            <div class="widget-container eq-widget-container">
-                <h2>EQ Meter</h2>
-                <canvas id="eqCanvas" width="500" height="250"></canvas>
             </div>
         </div>
     </div>
@@ -466,6 +510,30 @@
         const statusContent = document.getElementById('status-content');
         const cpuUsageSpan = document.getElementById('cpu-usage');
         const memUsageSpan = document.getElementById('mem-usage');
+
+        // --- Tab Navigation Logic ---
+        const audioTabBtn = document.getElementById('audio-tab-btn');
+        const videoTabBtn = document.getElementById('video-tab-btn');
+        const audioTabContent = document.getElementById('audio-tab-content');
+        const videoTabContent = document.getElementById('video-tab-content');
+
+        audioTabBtn.addEventListener('click', () => {
+            if (!audioTabBtn.classList.contains('active')) {
+                audioTabBtn.classList.add('active');
+                videoTabBtn.classList.remove('active');
+                audioTabContent.classList.add('active');
+                videoTabContent.classList.remove('active');
+            }
+        });
+
+        videoTabBtn.addEventListener('click', () => {
+            if (!videoTabBtn.classList.contains('active')) {
+                videoTabBtn.classList.add('active');
+                audioTabBtn.classList.remove('active');
+                videoTabContent.classList.add('active');
+                audioTabContent.classList.remove('active');
+            }
+        });
 
         let isIntegrating = false;
 
@@ -517,8 +585,7 @@
                 }
             } catch (e) {
                 console.error("handleOffer failed:", e);
-            }
-            finally {
+            } finally {
                 makingAnswer = false;
                 if (pendingRemoteOffer) {
                     const next = pendingRemoteOffer;
@@ -629,16 +696,16 @@
                     }
                 }
 
-                if (data.loudness !== undefined) {
-                    momentaryValue.textContent = data.loudness.toFixed(2);
+                if (data.type === 'lkfs') {
+                    momentaryValue.textContent = data.value.toFixed(2);
                 }
 
-                if (data.short_term_loudness !== undefined) {
-                    shortTermValue.textContent = data.short_term_loudness.toFixed(2);
+                if (data.type === 's_lkfs') {
+                    shortTermValue.textContent = data.value.toFixed(2);
                 }
 
-                if (data.integrated_loudness !== undefined) {
-                    integratedValue.textContent = data.integrated_loudness.toFixed(2);
+                if (data.type === 'i_lkfs') {
+                    integratedValue.textContent = data.value.toFixed(2);
                 }
 
                 if (data.type === 'lra') {

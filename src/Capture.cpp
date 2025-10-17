@@ -200,7 +200,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
     if (audioFrame)
     {
-        /* Audio processing temporarily disabled for WebRTC video test
         void* audioFrameBytes;
         audioFrame->GetBytes(&audioFrameBytes);
         const unsigned int sampleFrameCount = audioFrame->GetSampleFrameCount();
@@ -336,7 +335,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
                     [](const std::string& msg) { send_ws_message(msg); });
             }
         }
-        */
     }
 	return S_OK;
 }
