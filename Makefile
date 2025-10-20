@@ -8,7 +8,7 @@ TARGET = Capture
 .PHONY: all audio video clean
 
 # Default target
-all: audio
+all: video
 
 audio:
 	@echo "Building audio-only version..."
@@ -21,7 +21,7 @@ video:
 # --- Build Rules ---
 
 # Base sources
-SRCS = src/Capture.cpp src/Config.cpp src/DeckLinkAPIDispatch.cpp
+SRCS = src/Capture.cpp src/Config.cpp src/DeckLinkAPIDispatch.cpp src/AudioProcessor.cpp
 
 # Base flags
 CXXFLAGS += -Wno-multichar -I$(SDK_PATH) -I$(WEBSOCKETPP_PATH) -I$(ASIO_PATH)/include -DASIO_STANDALONE -std=c++17 -I./src

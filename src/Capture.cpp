@@ -56,10 +56,7 @@
 #include "DeckLinkAPI.h"
 #include "Capture.h"
 #include "Config.h"
-#include "LKFS.h"
-#include "avectorscope_processor.h" // Renamed for clarity
-#include "eq_processor.h"           // For EQ Meter processing
-#include "correlator_processor.h"   // For audio correlation processing
+#include "AudioProcessor.h"
 
 #ifdef ENABLE_VIDEO_PROCESSING
 #include "VideoProcessor.h"
@@ -78,28 +75,12 @@ static pthread_t g_ws_thread;
 static std::string g_ws_uri = "ws://127.0.0.1:8080";
 static bool g_ws_started = false;
 static bool		 g_do_exit = false;
-static bool g_isIntegrating = false;
 
-// FFmpeg-related globals
-static AVectorscopeProcessor g_avectorscopeProcessor;
-static EQProcessor g_eqProcessor;
-static CorrelatorProcessor g_correlatorProcessor;
+// Processors
+static AudioProcessor g_audioProcessor;
 #ifdef ENABLE_VIDEO_PROCESSING
 static VideoProcessor g_videoProcessor;
 #endif
-
-// Audio processing globals
-std::deque<double> g_leftChannelPcm;
-std::deque<double> g_rightChannelPcm;
-std::deque<double> g_shortTermLeftChannelPcm;
-std::deque<double> g_shortTermRightChannelPcm;
-std::vector<double> g_momentaryLoudnessHistory;
-std::vector<double> g_shortTermLoudnessHistory;
-
-const int kAudioSampleRate = 48000;
-const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000; // 19200
-const int kShortTermWindowSizeInSamples = kAudioSampleRate * 3; // 144000
-const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;  // 4800
 
 static pthread_mutex_t	 g_sleepMutex;
 static pthread_cond_t	 g_sleepCond;
@@ -152,13 +133,9 @@ void on_ws_close(client* c, websocketpp::connection_hdl hdl) {
 void on_ws_message(client* c, websocketpp::connection_hdl hdl, client::message_ptr msg) {
     std::string payload = msg->get_payload();
     if (payload.find("\"command\"") != std::string::npos && payload.find("\"start_integration\"") != std::string::npos) {
-        fprintf(stderr, "Received start integration command.\n");
-        g_momentaryLoudnessHistory.clear();
-        g_shortTermLoudnessHistory.clear();
-        g_isIntegrating = true;
+        g_audioProcessor.startIntegration();
     } else if (payload.find("\"command\"") != std::string::npos && payload.find("\"stop_integration\"") != std::string::npos) {
-        fprintf(stderr, "Received stop integration command.\n");
-        g_isIntegrating = false;
+        g_audioProcessor.stopIntegration();
     }
 }
 
@@ -200,141 +177,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
     if (audioFrame)
     {
-        void* audioFrameBytes;
-        audioFrame->GetBytes(&audioFrameBytes);
-        const unsigned int sampleFrameCount = audioFrame->GetSampleFrameCount();
-        const unsigned int channelCount = g_config.m_audioChannels;
-        const unsigned int sampleDepth = g_config.m_audioSampleDepth;
-
-        const unsigned int leftChannel = g_config.m_leftAudioChannel;
-        const unsigned int rightChannel = g_config.m_rightAudioChannel;
-
-        if (leftChannel >= channelCount || rightChannel >= channelCount)
-        {
-            fprintf(stderr, "Error: Invalid audio channel selection. Left: %u, Right: %u, Total Channels: %u\n", leftChannel, rightChannel, channelCount);
-            return S_OK; // Or handle error appropriately
-        }
-
-        // if (channelCount == 2) // We now handle any number of channels, just picking two.
-        {
-            double maxLeft = 0.0;
-            double maxRight = 0.0;
-            std::vector<double> current_left_samples;
-            std::vector<double> current_right_samples;
-            current_left_samples.reserve(sampleFrameCount);
-            current_right_samples.reserve(sampleFrameCount);
-
-            if (sampleDepth == 32)
-            {
-                int32_t* pcmData = (int32_t*)audioFrameBytes;
-                for (unsigned int i = 0; i < sampleFrameCount; ++i)
-                {
-                    double leftSample = (double)pcmData[i * channelCount + leftChannel] / 2147483648.0;
-                    double rightSample = (double)pcmData[i * channelCount + rightChannel] / 2147483648.0;
-                    if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
-                    if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
-                    g_leftChannelPcm.push_back(leftSample);
-                    g_rightChannelPcm.push_back(rightSample);
-                    g_shortTermLeftChannelPcm.push_back(leftSample);
-                    g_shortTermRightChannelPcm.push_back(rightSample);
-                    current_left_samples.push_back(leftSample);
-                    current_right_samples.push_back(rightSample);
-                }
-            }
-            else if (sampleDepth == 16)
-            {
-                int16_t* pcmData = (int16_t*)audioFrameBytes;
-                for (unsigned int i = 0; i < sampleFrameCount; ++i)
-                {
-                    double leftSample = (double)pcmData[i * channelCount + leftChannel] / 32768.0;
-                    double rightSample = (double)pcmData[i * channelCount + rightChannel] / 32768.0;
-                    if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
-                    if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
-                    g_leftChannelPcm.push_back(leftSample);
-                    g_rightChannelPcm.push_back(rightSample);
-                    g_shortTermLeftChannelPcm.push_back(leftSample);
-                    g_shortTermRightChannelPcm.push_back(rightSample);
-                    current_left_samples.push_back(leftSample);
-                    current_right_samples.push_back(rightSample);
-                }
-            }
-
-            double leftDb = (maxLeft > 0.0) ? (20.0 * log10(maxLeft)) : -100.0;
-            double rightDb = (maxRight > 0.0) ? (20.0 * log10(maxRight)) : -100.0;
-            std::ostringstream oss_levels;
-            oss_levels << "{\"type\": \"levels\", \"left\": " << leftDb << ", \"right\": " << rightDb << "}";
-            send_ws_message(oss_levels.str());
-
-            if (sampleFrameCount > 0)
-            {
-                std::vector<float> leftChunk(g_leftChannelPcm.end() - sampleFrameCount, g_leftChannelPcm.end());
-                std::vector<float> rightChunk(g_rightChannelPcm.end() - sampleFrameCount, g_rightChannelPcm.end());
-                g_avectorscopeProcessor.processAudio(leftChunk, rightChunk, sampleFrameCount,
-                    [](const std::string& msg) { send_ws_message(msg); });
-            }
-
-            while (g_leftChannelPcm.size() >= kWindowSizeInSamples)
-            {
-                std::vector<double> leftWindow(g_leftChannelPcm.begin(), g_leftChannelPcm.begin() + kWindowSizeInSamples);
-                std::vector<double> rightWindow(g_rightChannelPcm.begin(), g_rightChannelPcm.begin() + kWindowSizeInSamples);
-                double lkfs = Momentary_loudness(leftWindow, rightWindow, kAudioSampleRate);
-                std::ostringstream oss;
-                oss << "{\"type\": \"lkfs\", \"value\": " << lkfs << "}";
-                send_ws_message(oss.str());
-                if(g_isIntegrating){
-                    g_momentaryLoudnessHistory.push_back(lkfs);
-                    double i_lkfs = integrated_loudness_with_momentaries(g_momentaryLoudnessHistory, kAudioSampleRate);
-                    std::ostringstream oss_i;
-                    oss_i << "{\"type\": \"i_lkfs\", \"value\": " << i_lkfs << "}";
-                    send_ws_message(oss_i.str());
-                }
-                for (unsigned int i = 0; i < kSlideSizeInSamples; ++i) {
-                    g_leftChannelPcm.pop_front();
-                    g_rightChannelPcm.pop_front();
-                }
-            }
-
-            while (g_shortTermLeftChannelPcm.size() >= kShortTermWindowSizeInSamples)
-            {
-                std::vector<double> leftWindow(g_shortTermLeftChannelPcm.begin(), g_shortTermLeftChannelPcm.begin() + kShortTermWindowSizeInSamples);
-                std::vector<double> rightWindow(g_shortTermRightChannelPcm.begin(), g_shortTermRightChannelPcm.begin() + kShortTermWindowSizeInSamples);
-                double s_lkfs = ShortTerm_loudness(leftWindow, rightWindow, kAudioSampleRate);
-                std::ostringstream oss_s;
-                oss_s << "{\"type\": \"s_lkfs\", \"value\": " << s_lkfs << "}";
-                send_ws_message(oss_s.str());
-
-                if (g_isIntegrating) {
-                    g_shortTermLoudnessHistory.push_back(s_lkfs);
-                    
-                    // Calculate and send LRA continuously
-                    if (g_shortTermLoudnessHistory.size() > 1) { // Need at least 2 values for a range
-                        double lra = LRA_with_shorts(g_shortTermLoudnessHistory);
-                        std::ostringstream oss_lra;
-                        oss_lra << "{\"type\": \"lra\", \"value\": " << lra << "}";
-                        send_ws_message(oss_lra.str());
-                    }
-                }
-
-                for (unsigned int i = 0; i < kSlideSizeInSamples; ++i) {
-                    g_shortTermLeftChannelPcm.pop_front();
-                    g_shortTermRightChannelPcm.pop_front();
-                }
-            }
-
-            if (sampleFrameCount > 0)
-            {
-                // Calculate and send correlation
-                std::vector<float> left_float(current_left_samples.begin(), current_left_samples.end());
-                std::vector<float> right_float(current_right_samples.begin(), current_right_samples.end());
-                float correlation = g_correlatorProcessor.process(left_float.data(), right_float.data(), sampleFrameCount);
-                std::ostringstream oss_corr;
-                oss_corr << "{\"type\": \"correlation\", \"value\": " << correlation << "}";
-                send_ws_message(oss_corr.str());
-
-                g_eqProcessor.processAudio(current_left_samples.data(), current_right_samples.data(), sampleFrameCount,
-                    [](const std::string& msg) { send_ws_message(msg); });
-            }
-        }
+        g_audioProcessor.processAudioPacket(audioFrame);
     }
 	return S_OK;
 }
@@ -437,8 +280,10 @@ int main(int argc, char *argv[])
         goto bail;
     }
 
-	if (!g_avectorscopeProcessor.initialize()) { fprintf(stderr, "Failed to initialize vectorscope processor\n"); goto bail; }
-	g_eqProcessor.initialize();
+	if (!g_audioProcessor.initialize(g_config, send_ws_message)) { 
+		fprintf(stderr, "Failed to initialize audio processor\n"); 
+		goto bail; 
+	}
 
 	deckLink = g_config.GetSelectedDeckLink();
 	if (deckLink == NULL) { fprintf(stderr, "Unable to get DeckLink device %u\n", g_config.m_deckLinkIndex); goto bail; }
