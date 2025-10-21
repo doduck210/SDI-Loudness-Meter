@@ -93,7 +93,7 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
     if (!codecContext) { std::cerr << "Could not allocate video codec context." << std::endl; return false; }
 
     // Settings matched to the example's VideoEncoder.h for similar quality/performance
-    codecContext->bit_rate = 10000000; // 10 Mbps
+    codecContext->bit_rate = 4000000; // 4 Mbps
     codecContext->width = dst_width;
     codecContext->height = dst_height;
     codecContext->time_base = (AVRational){(int)frameDuration, (int)timeScale}; // Use source timebase
@@ -149,7 +149,7 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
     return true;
 }
 
-void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame, const std::function<void(const std::string&)>& send_ws_message) {
+void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame) {
     if (!initialized || !frame || !swsContext) {
         return;
     }

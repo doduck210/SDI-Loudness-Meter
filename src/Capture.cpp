@@ -168,9 +168,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
             fprintf(stderr, "No input signal detected\n");
         } else {
             #ifdef ENABLE_VIDEO_PROCESSING
-            g_videoProcessor.processFrame(videoFrame, [](const std::string& msg) {
-                // We don't send video data over websocket, so this is a no-op.
-            });
+            g_videoProcessor.processFrame(videoFrame);
             #endif
         }
     }

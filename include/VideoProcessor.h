@@ -23,7 +23,7 @@ public:
     ~VideoProcessor();
 
     bool initialize(int width, int height, BMDTimeValue timeScale, BMDTimeValue frameDuration, BMDPixelFormat pixelFormat);
-    void processFrame(IDeckLinkVideoInputFrame* frame, const std::function<void(const std::string&)>& send_ws_message);
+    void processFrame(IDeckLinkVideoInputFrame* frame);
     void stop();
 
 private:
