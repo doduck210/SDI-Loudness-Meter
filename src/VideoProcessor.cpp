@@ -17,18 +17,19 @@ static AVPixelFormat get_ffmpeg_pixel_format(BMDPixelFormat bmd_format) {
     }
 }
 
-VideoProcessor::VideoProcessor() : 
+VideoProcessor::VideoProcessor() :
     initialized(false),
     codecContext(nullptr),
-    formatContext(nullptr), // Will not be used, but keep for now to avoid breaking constructor
+    formatContext(nullptr),
     srcFrame(nullptr),
     dstFrame(nullptr),
     packet(nullptr),
     swsContext(nullptr),
     sourcePixelFormat(AV_PIX_FMT_NONE),
-    webrtc_handler(nullptr) {
+    webrtc_handler(nullptr),
+    vectorScopeCodecContext(nullptr),
+    vectorScopeFrame(nullptr) {
 }
-
 VideoProcessor::~VideoProcessor() {
     cleanup();
 }
@@ -57,12 +58,18 @@ void VideoProcessor::cleanup() {
     if (packet) av_packet_free(&packet);
     if (swsContext) sws_freeContext(swsContext);
 
+    if (vectorScopeProcessor) vectorScopeProcessor->cleanup();
+    if (vectorScopeCodecContext) avcodec_free_context(&vectorScopeCodecContext);
+    if (vectorScopeFrame) av_frame_free(&vectorScopeFrame);
+
     initialized = false;
     codecContext = nullptr;
     srcFrame = nullptr;
     dstFrame = nullptr;
     packet = nullptr;
     swsContext = nullptr;
+    vectorScopeCodecContext = nullptr;
+    vectorScopeFrame = nullptr;
 
     std::cerr << "VideoProcessor cleaned up." << std::endl;
 }
@@ -123,8 +130,49 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
     try {
         webrtc_handler = std::make_shared<WebRTC>("publisher");
         webrtc_handler->RegisterH264Track("video-raw", "stream-raw", "video-raw", 43);
+
+        // Initialize vectorscope processor
+        vectorScopeProcessor = std::make_unique<VideoVectorScope>();
+        if (!vectorScopeProcessor->initialize(dst_width, dst_height, AV_PIX_FMT_YUV420P, codecContext->time_base, codecContext->framerate)) {
+            std::cerr << "Failed to initialize VideoVectorScope." << std::endl;
+            return false;
+        }
+
+        // Initialize codec for vectorscope output
+        const AVCodec* vs_codec = avcodec_find_encoder_by_name("libx264");
+        if (!vs_codec) { std::cerr << "Codec libx264 not found for vectorscope." << std::endl; return false; }
+
+        vectorScopeCodecContext = avcodec_alloc_context3(vs_codec);
+        if (!vectorScopeCodecContext) { std::cerr << "Could not allocate vectorscope video codec context." << std::endl; return false; }
+
+        vectorScopeCodecContext->bit_rate = 1000000; // 1 Mbps, adjusted for smaller resolution
+        vectorScopeCodecContext->width = 256;
+        vectorScopeCodecContext->height = 256;
+        vectorScopeCodecContext->time_base = codecContext->time_base;
+        vectorScopeCodecContext->framerate = codecContext->framerate;
+        vectorScopeCodecContext->gop_size = 30;
+        vectorScopeCodecContext->max_b_frames = 0;
+        vectorScopeCodecContext->pix_fmt = AV_PIX_FMT_YUV420P;
+        vectorScopeCodecContext->profile = FF_PROFILE_H264_MAIN;
+        vectorScopeCodecContext->level = 31;
+
+        av_opt_set(vectorScopeCodecContext->priv_data, "preset", "ultrafast", 0);
+        av_opt_set(vectorScopeCodecContext->priv_data, "tune", "zerolatency", 0);
+        av_opt_set(vectorScopeCodecContext->priv_data, "x264-params", "repeat-headers=1", 0);
+
+        if (avcodec_open2(vectorScopeCodecContext, vs_codec, NULL) < 0) { std::cerr << "Could not open vectorscope codec." << std::endl; return false; }
+
+        vectorScopeFrame = av_frame_alloc();
+        if (!vectorScopeFrame) { std::cerr << "Could not allocate vectorscope frame." << std::endl; return false; }
+        vectorScopeFrame->width = 256;
+        vectorScopeFrame->height = 256;
+        vectorScopeFrame->format = AV_PIX_FMT_YUV420P;
+        av_frame_get_buffer(vectorScopeFrame, 0);
+
+        webrtc_handler->RegisterH264Track("video-vectorscope", "stream-vectorscope", "video-vectorscope", 44);
+
     } catch (const std::exception& e) {
-        std::cerr << "Failed to initialize WebRTC: " << e.what() << std::endl;
+        std::cerr << "Failed to initialize WebRTC or vectorscope components: " << e.what() << std::endl;
         return false;
     }
 
@@ -164,6 +212,35 @@ void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame) {
 
     static int64_t pts = 0;
     dstFrame->pts = pts++;
+
+    // Process and encode vectorscope frame
+    if (vectorScopeProcessor && vectorScopeFrame) {
+        if (vectorScopeProcessor->process_frame(dstFrame, vectorScopeFrame)) {
+            vectorScopeFrame->pts = dstFrame->pts;
+            int vs_send_ret = avcodec_send_frame(vectorScopeCodecContext, vectorScopeFrame);
+            if (vs_send_ret >= 0) {
+                while (true) {
+                    int vs_recv_ret = avcodec_receive_packet(vectorScopeCodecContext, packet);
+                    if (vs_recv_ret == AVERROR(EAGAIN) || vs_recv_ret == AVERROR_EOF) {
+                        break;
+                    } else if (vs_recv_ret < 0) {
+                        char errStr[AV_ERROR_MAX_STRING_SIZE] = {0};
+                        av_make_error_string(errStr, AV_ERROR_MAX_STRING_SIZE, vs_recv_ret);
+                        fprintf(stderr, "[FFmpeg] Error during vectorscope encoding: avcodec_receive_packet failed with error %s\n", errStr);
+                        break;
+                    }
+                    if (webrtc_handler) {
+                        webrtc_handler->SendEncoded("video-vectorscope", packet);
+                    }
+                    av_packet_unref(packet);
+                }
+            } else {
+                char errStr[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_make_error_string(errStr, AV_ERROR_MAX_STRING_SIZE, vs_send_ret);
+                fprintf(stderr, "[FFmpeg] Error sending vectorscope frame for encoding: avcodec_send_frame failed with error %s\n", errStr);
+            }
+        }
+    }
 
     int send_ret = avcodec_send_frame(codecContext, dstFrame);
     if (send_ret >= 0) {

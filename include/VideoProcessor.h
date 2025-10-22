@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "WebRTC.h"
+#include "videovectorscope.h"
 
 // FFmpeg headers
 extern "C" {
@@ -37,6 +38,10 @@ private:
     AVPixelFormat sourcePixelFormat;
 
     std::shared_ptr<WebRTC> webrtc_handler;
+
+    std::unique_ptr<VideoVectorScope> vectorScopeProcessor; // New: Vectorscope processor
+    AVCodecContext* vectorScopeCodecContext; // New: Codec context for vectorscope output
+    AVFrame* vectorScopeFrame; // New: Frame for vectorscope output
 
     void cleanup();
 };
