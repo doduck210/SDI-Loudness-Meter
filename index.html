@@ -151,6 +151,29 @@
             border: 2px solid #34495e;
             background-color: #000;
             box-sizing: border-box;
+            position: relative;
+        }
+
+        .videovs-container h2 {
+            position: absolute;
+            top: 10px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            margin: 0;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.2em;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #videoVectorscopeGrid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Make sure clicks go through to the video */
         }
 
         .lkfs-widget-container {
@@ -537,14 +560,14 @@
         <div id="video-tab-content" class="tab-content">
             <div class="widget-container">
                 <h2>Video</h2>
-                <div class="video-container">
-                    <video id="rawVideo" autoplay playsinline muted></video>
-                </div>
-                <h2>Video Vectorscope</h2>
-                <div class="videovs-container">
-                    <video id="vectorscopeVideo" autoplay playsinline muted></video>
-                </div>
-            </div>
+                        <div class="video-container">
+                            <video id="rawVideo" autoplay playsinline muted></video>
+                        </div>
+                        <div class="videovs-container">
+                            <h2>Video Vectorscope</h2>
+                            <video id="vectorscopeVideo" autoplay playsinline muted></video>
+                            <canvas id="videoVectorscopeGrid"></canvas>
+                        </div>            </div>
         </div>
     </div>
 
@@ -992,6 +1015,52 @@
         }
 
         createScale();
+
+        const videoVectorscopeCanvas = document.getElementById('videoVectorscopeGrid');
+        if (videoVectorscopeCanvas) {
+            const videoVsCtx = videoVectorscopeCanvas.getContext('2d');
+
+            function drawVideoVectorscopeGrid() {
+                const canvas = videoVectorscopeCanvas;
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+
+                const ctx = videoVsCtx;
+                const width = canvas.width;
+                const height = canvas.height;
+
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.clearRect(0, 0, width, height);
+
+                // XY axes
+                ctx.beginPath();
+                ctx.moveTo(width / 2, 0);
+                ctx.lineTo(width / 2, height);
+                ctx.moveTo(0, height / 2);
+                ctx.lineTo(width, height / 2);
+                ctx.stroke();
+
+                // Diagonal axes
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(width, height);
+                ctx.moveTo(0, height);
+                ctx.lineTo(width, 0);
+                ctx.stroke();
+            }
+
+            // Redraw when the video is loaded and playing, as canvas dimensions might not be ready initially
+            const videoVsVideo = document.getElementById('vectorscopeVideo');
+            videoVsVideo.addEventListener('playing', drawVideoVectorscopeGrid);
+
+            // Also draw on resize
+            window.addEventListener('resize', drawVideoVectorscopeGrid);
+            
+            // Initial draw
+            drawVideoVectorscopeGrid();
+        }
+
         requestAnimationFrame(animationLoop);
     </script>
 </body>
