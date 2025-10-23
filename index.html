@@ -140,6 +140,19 @@
             box-sizing: border-box;
         }
 
+        .videovs-container video {
+            width: 100%;
+            height: 100%;
+        }
+
+        .videovs-container {
+            width: 250px;
+            height: 250px;
+            border: 2px solid #34495e;
+            background-color: #000;
+            box-sizing: border-box;
+        }
+
         .lkfs-widget-container {
             width: 250px;
         }
@@ -527,6 +540,10 @@
                 <div class="video-container">
                     <video id="rawVideo" autoplay playsinline muted></video>
                 </div>
+                <h2>Video Vectorscope</h2>
+                <div class="videovs-container">
+                    <video id="vectorscopeVideo" autoplay playsinline muted></video>
+                </div>
             </div>
         </div>
     </div>
@@ -656,15 +673,15 @@
         };
 
         pc.ontrack = (e) => {
-            const videoElement = document.getElementById('rawVideo');
             const streamId = e.streams[0]?.id;
             const trackId = e.track.id;
 
             console.log(`Received track: kind=${e.track.kind}, id=${trackId}, streamId=${streamId}`);
 
-            if (e.track.kind === 'video' && (trackId === 'video-raw' || streamId === 'stream-raw')) {
-                videoElement.srcObject = e.streams[0];
-                console.log("Attached 'video-raw' track to #rawVideo");
+            if (trackId === 'video-raw' || streamId === 'stream-raw') {
+                document.getElementById('rawVideo').srcObject = e.streams[0];
+            } else if (trackId === 'video-vs' || streamId === 'stream-vectorscope') {
+                document.getElementById('vectorscopeVideo').srcObject = e.streams[0];
             } else {
                 console.log(`Ignored track ${trackId} (${streamId})`);
             }
