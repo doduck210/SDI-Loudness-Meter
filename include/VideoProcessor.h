@@ -2,19 +2,15 @@
 #define VIDEOPROCESSOR_H
 
 #include "DeckLinkAPI.h"
-#include <string>
-#include <functional>
 #include <memory>
 
 #include "WebRTC.h"
+#include "rawvideoprocessor.h"
 #include "videovectorscope.h"
 
 // FFmpeg headers
 extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
+#include <libavutil/frame.h>
 #include <libswscale/swscale.h>
 }
 
@@ -28,22 +24,22 @@ public:
     void stop();
 
 private:
+    void cleanup();
+
     bool initialized;
-    AVCodecContext* codecContext;
-    AVFormatContext* formatContext;
-    AVFrame* srcFrame;
-    AVFrame* dstFrame;
-    AVPacket* packet;
+    
+    // Scaling
     SwsContext* swsContext;
     AVPixelFormat sourcePixelFormat;
+    AVFrame* srcFrame;
+    AVFrame* dstFrame;
 
+    // WebRTC Handler
     std::shared_ptr<WebRTC> webrtc_handler;
 
-    std::unique_ptr<VideoVectorScope> vectorScopeProcessor; // New: Vectorscope processor
-    AVCodecContext* vectorScopeCodecContext; // New: Codec context for vectorscope output
-    AVFrame* vectorScopeFrame; // New: Frame for vectorscope output
-
-    void cleanup();
+    // Processors
+    std::unique_ptr<RawVideoProcessor> raw_video_processor;
+    std::unique_ptr<VideoVectorScope> vector_scope_processor;
 };
 
 #endif // VIDEOPROCESSOR_H
