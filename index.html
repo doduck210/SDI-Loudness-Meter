@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,6 +18,7 @@
             color: #ecf0f1;
             box-sizing: border-box;
         }
+
         .main-container {
             display: flex;
             flex-direction: column;
@@ -24,6 +26,7 @@
             gap: 20px;
             width: 100%;
         }
+
         .monitor-row {
             display: flex;
             gap: 20px;
@@ -31,19 +34,24 @@
             justify-content: center;
             flex-wrap: wrap;
         }
+
         .widget-container {
             text-align: center;
             margin-bottom: 20px;
         }
+
         .levels-widget-container {
             width: 150px;
         }
+
         h1 {
             margin-bottom: 0;
         }
+
         h2 {
             margin-bottom: 10px;
         }
+
         .level-meter-container {
             display: flex;
             flex-direction: row;
@@ -52,6 +60,7 @@
             height: 250px;
             align-items: flex-end;
         }
+
         .level-meter {
             width: 35px;
             height: 220px;
@@ -60,6 +69,7 @@
             border-radius: 5px;
             position: relative;
         }
+
         .meter-fill {
             width: 100%;
             height: 0%;
@@ -69,6 +79,7 @@
             bottom: 0;
             border-radius: 2px;
         }
+
         .meter-label {
             position: absolute;
             bottom: -42px;
@@ -78,6 +89,7 @@
             font-size: 0.9em;
             font-weight: bold;
         }
+
         .meter-current-value {
             position: absolute;
             bottom: -22px;
@@ -89,6 +101,7 @@
             font-size: 0.8em;
             font-weight: bold;
         }
+
         .scale-container {
             height: 220px;
             width: 30px;
@@ -97,12 +110,14 @@
             font-size: 0.8em;
             text-align: right;
         }
+
         .scale-mark {
             position: absolute;
             width: 100%;
             border-bottom: 1px solid #4a627a;
             padding-right: 5px;
         }
+
         .vectorscope-container {
             width: 250px;
             height: 250px;
@@ -110,10 +125,13 @@
             background-color: #000;
             box-sizing: border-box;
         }
-        .vectorscope-container img, .video-container video {
+
+        .vectorscope-container img,
+        .video-container video {
             width: 100%;
             height: 100%;
         }
+
         .video-container {
             width: 640px;
             height: 360px;
@@ -121,9 +139,11 @@
             background-color: #000;
             box-sizing: border-box;
         }
+
         .lkfs-widget-container {
-             width: 250px;
+            width: 250px;
         }
+
         .lkfs-display {
             display: flex;
             flex-direction: column;
@@ -132,9 +152,11 @@
             padding: 15px;
             border-radius: 5px;
             border: 2px solid #34495e;
-            height: 240px; /* Adjusted height */
+            height: 240px;
+            /* Adjusted height */
             justify-content: center;
         }
+
         .lra-display {
             display: flex;
             flex-direction: column;
@@ -145,22 +167,27 @@
             border: 2px solid #34495e;
             justify-content: center;
         }
+
         .lkfs-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 1.5em;
         }
+
         .lkfs-label {
             font-weight: bold;
             color: #bdc3c7;
         }
+
         .lkfs-value {
             font-weight: bold;
             min-width: 80px;
             text-align: right;
         }
-        #toggleIntegration, .placeholder-button {
+
+        #toggleIntegration,
+        .placeholder-button {
             background-color: #34495e;
             color: #ecf0f1;
             border: 1px solid #4a627a;
@@ -170,12 +197,15 @@
             font-size: 0.8em;
             margin-left: 10px;
         }
+
         #toggleIntegration:hover {
             background-color: #4a627a;
         }
+
         .placeholder-button {
             visibility: hidden;
         }
+
         .lra-bar-container {
             width: 100%;
             height: 10px;
@@ -184,20 +214,24 @@
             margin-top: 5px;
             position: relative;
         }
+
         .lra-bar {
             height: 100%;
             width: 0%;
             background-color: #3498db;
             border-radius: 3px;
         }
+
         .eq-widget-container {
             width: 500px;
         }
+
         #eqCanvas {
             border: 2px solid #34495e;
             background-color: #1c2833;
             border-radius: 5px;
         }
+
         .correlator-container {
             width: 250px;
             height: 25px;
@@ -207,25 +241,32 @@
             position: relative;
             margin-top: 10px;
         }
+
         .correlator-bar {
             position: absolute;
-            width: 0; /* Initial width is 0 */
+            width: 0;
+            /* Initial width is 0 */
             height: 100%;
             background-color: #27ae60;
-            left: 50%; /* Initial position is center */
+            left: 50%;
+            /* Initial position is center */
             border-radius: 2px;
         }
+
         .correlator-scale {
-            width: 250px; /* Match container width */
+            width: 250px;
+            /* Match container width */
             display: flex;
             justify-content: space-between;
             position: relative;
-            top: 5px; /* Adjust position relative to container */
+            top: 5px;
+            /* Adjust position relative to container */
             font-size: 0.8em;
             color: #bdc3c7;
             padding: 0 5px;
             box-sizing: border-box;
         }
+
         /* Settings Menu Styles */
         .settings-menu {
             position: absolute;
@@ -236,6 +277,7 @@
             flex-direction: column;
             align-items: flex-end;
         }
+
         .settings-content {
             display: none;
             flex-direction: column;
@@ -245,6 +287,7 @@
             border-radius: 5px;
             padding: 10px;
         }
+
         #settings-toggle {
             background: none;
             border: none;
@@ -255,14 +298,17 @@
             background-color: #34495e;
             border-radius: 5px;
         }
+
         .channel-selector {
             display: flex;
             flex-direction: column;
             gap: 5px;
         }
+
         .channel-selector label {
             font-size: 0.9em;
         }
+
         .channel-selector select {
             background-color: #2c3e50;
             color: #ecf0f1;
@@ -270,6 +316,7 @@
             border-radius: 3px;
             padding: 5px;
         }
+
         #save-settings {
             background-color: #27ae60;
             color: white;
@@ -278,9 +325,11 @@
             border-radius: 5px;
             cursor: pointer;
         }
+
         #save-settings:hover {
             background-color: #2ecc71;
         }
+
         /* Status Display Styles */
         .status-display {
             position: fixed;
@@ -291,6 +340,7 @@
             flex-direction: column;
             align-items: flex-end;
         }
+
         #status-toggle {
             background-color: #34495e;
             color: #ecf0f1;
@@ -299,6 +349,7 @@
             padding: 8px 12px;
             cursor: pointer;
         }
+
         #status-content {
             display: none;
             background-color: #1c2833;
@@ -309,11 +360,14 @@
             width: 200px;
             font-size: 0.9em;
         }
+
         .status-row {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start; /* Align items to the top */
+            align-items: flex-start;
+            /* Align items to the top */
         }
+
         .status-row span:last-child {
             text-align: right;
         }
@@ -327,6 +381,7 @@
             width: 90%;
             max-width: 1200px;
         }
+
         .tab-btn {
             padding: 10px 20px;
             cursor: pointer;
@@ -336,15 +391,18 @@
             border-bottom: 3px solid transparent;
             font-size: 1.1em;
         }
+
         .tab-btn.active {
             color: #ecf0f1;
             border-bottom: 3px solid #3498db;
         }
+
         .tab-content {
             display: none;
             width: 100%;
             justify-content: center;
         }
+
         .tab-content.active {
             display: flex;
             flex-direction: column;
@@ -352,6 +410,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="settings-menu">
         <button id="settings-toggle">⚙️</button>
@@ -434,7 +493,8 @@
                     <div class="lra-display">
                         <div class="lkfs-row">
                             <div style="flex-basis: 100%;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8em;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8em;">
                                     <span class="lkfs-label">LRA:</span>
                                     <span class="lkfs-value" id="lraValue" style="font-size: 1em;">0.0</span>
                                 </div>
@@ -597,9 +657,16 @@
 
         pc.ontrack = (e) => {
             const videoElement = document.getElementById('rawVideo');
-            if (videoElement && e.track.kind === 'video') {
+            const streamId = e.streams[0]?.id;
+            const trackId = e.track.id;
+
+            console.log(`Received track: kind=${e.track.kind}, id=${trackId}, streamId=${streamId}`);
+
+            if (e.track.kind === 'video' && (trackId === 'video-raw' || streamId === 'stream-raw')) {
                 videoElement.srcObject = e.streams[0];
-                console.log("Attached remote video track to #rawVideo.");
+                console.log("Attached 'video-raw' track to #rawVideo");
+            } else {
+                console.log(`Ignored track ${trackId} (${streamId})`);
             }
         };
 
@@ -663,8 +730,8 @@
 
                 if (data.type === 'system_stats') {
                     cpuUsageSpan.textContent = `${data.cpu.toFixed(1)}%`;
-                    const memUsedGb = data.memory.used / (1024**3);
-                    const memTotalGb = data.memory.total / (1024**3);
+                    const memUsedGb = data.memory.used / (1024 ** 3);
+                    const memTotalGb = data.memory.total / (1024 ** 3);
                     memUsageSpan.innerHTML = `${data.memory.percent.toFixed(1)}%<br><small>(${memUsedGb.toFixed(2)}/${memTotalGb.toFixed(2)} GB)</small>`;
                 }
 
@@ -691,7 +758,7 @@
                 if (data.type === 'eq') {
                     for (let i = 0; i < numEqBands; i++) {
                         if (data.data && data.data[i] !== undefined) {
-                           eqState.bands[i].latestValue = data.data[i];
+                            eqState.bands[i].latestValue = data.data[i];
                         }
                     }
                 }
@@ -769,18 +836,18 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ leftChannel, rightChannel }),
             })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Settings saved:', data);
-                alert('Settings saved and Capture process restarted.');
-                settingsContent.style.display = 'none';
-            })
-            .catch(error => {
-                console.error('Error saving settings:', error);
-                alert('Error saving settings.');
-            });
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Settings saved:', data);
+                    alert('Settings saved and Capture process restarted.');
+                    settingsContent.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error saving settings:', error);
+                    alert('Error saving settings.');
+                });
         };
-        
+
         populateChannelSelectors();
 
         statusToggle.onclick = () => {
@@ -845,7 +912,7 @@
             freqLabels.forEach(freq => {
                 const log_freq = Math.log(freq);
                 const x = meterWidth * (log_freq - min_log_freq) / log_range;
-                eqCtx.fillText(freq < 1000 ? freq : `${freq/1000}k`, x, canvas.height - 5);
+                eqCtx.fillText(freq < 1000 ? freq : `${freq / 1000}k`, x, canvas.height - 5);
             });
             eqCtx.restore();
             eqCtx.save();
@@ -911,4 +978,5 @@
         requestAnimationFrame(animationLoop);
     </script>
 </body>
+
 </html>
