@@ -7,6 +7,7 @@
 #include "WebRTC.h"
 #include "rawvideoprocessor.h"
 #include "videovectorscope.h"
+#include "videowaveform.h"
 
 // FFmpeg headers
 extern "C" {
@@ -40,6 +41,7 @@ private:
     // Processors
     std::unique_ptr<RawVideoProcessor> raw_video_processor;
     std::unique_ptr<VideoVectorScope> vector_scope_processor;
+    std::unique_ptr<VideoWaveform> waveform_processor;
 };
 
 #endif // VIDEOPROCESSOR_H

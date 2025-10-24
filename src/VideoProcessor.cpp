@@ -23,8 +23,10 @@ VideoProcessor::VideoProcessor() :
     dstFrame(nullptr),
     webrtc_handler(nullptr),
     raw_video_processor(nullptr),
-    vector_scope_processor(nullptr) {
+    vector_scope_processor(nullptr),
+    waveform_processor(nullptr) {
 }
+
 
 VideoProcessor::~VideoProcessor() {
     cleanup();
@@ -34,9 +36,11 @@ void VideoProcessor::cleanup() {
     // Processors are cleaned up by unique_ptr, but we can call cleanup explicitly if needed
     if (raw_video_processor) raw_video_processor->cleanup();
     if (vector_scope_processor) vector_scope_processor->cleanup();
+    if (waveform_processor) waveform_processor->cleanup();
 
     raw_video_processor.reset();
     vector_scope_processor.reset();
+    waveform_processor.reset();
     webrtc_handler.reset();
 
     if (srcFrame) av_frame_free(&srcFrame);
@@ -78,6 +82,12 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
         if (!vector_scope_processor->initialize(dst_width, dst_height, AV_PIX_FMT_YUV420P, time_base, framerate, webrtc_handler)) {
             std::cerr << "[Warning] Failed to initialize VideoVectorScope." << std::endl;
             vector_scope_processor.reset(); // Continue without vectorscope
+        }
+
+        waveform_processor = std::make_unique<VideoWaveform>();
+        if (!waveform_processor->initialize(dst_width, dst_height, AV_PIX_FMT_YUV420P, time_base, framerate, webrtc_handler)) {
+            std::cerr << "[Warning] Failed to initialize VideoWaveform." << std::endl;
+            waveform_processor.reset(); // Continue without waveform
         }
 
     } catch (const std::exception& e) {
@@ -128,6 +138,10 @@ void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame) {
 
     if (vector_scope_processor) {
         vector_scope_processor->process_and_encode(dstFrame);
+    }
+
+    if (waveform_processor) {
+        waveform_processor->process_and_encode(dstFrame);
     }
 }
 

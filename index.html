@@ -453,7 +453,7 @@
     </div>
 
     <div class="main-container">
-        <h1>Ducky's Monitor</h1>
+        <h1><span style="position:relative;"><span style="font-size: 0.5em; color: #bdc3c7; position: absolute; right: 100%; white-space: nowrap; top: 50%; transform: translateY(-50%); margin-right: 1ch;">ducky's</span> Ch Six Sense </span></h1>
 
         <div class="tab-nav">
             <button id="audio-tab-btn" class="tab-btn active">Audio</button>
@@ -546,15 +546,27 @@
         </div>
 
         <div id="video-tab-content" class="tab-content">
-            <div class="widget-container">
-                <h2>Video</h2>
-                <div class="video-container">
-                    <video id="rawVideo" autoplay playsinline muted></video>
+            <div class="monitor-row">
+                <div class="widget-container">
+                    <h2>Video</h2>
+                    <div class="video-container">
+                        <video id="rawVideo" autoplay playsinline muted></video>
+                    </div>
                 </div>
-                <h2>Video Vectorscope</h2>
-                <div class="videovs-container">
-                    <video id="vectorscopeVideo" autoplay playsinline muted></video>
-                    <canvas id="videoVectorscopeGrid"></canvas>
+                <div class="widget-container">
+                    <h2>Video Waveform</h2>
+                    <div class="video-container">
+                        <video id="waveformVideo" autoplay playsinline muted></video>
+                    </div>
+                </div>
+            </div>
+            <div class="monitor-row">
+                <div class="widget-container">
+                    <h2>Video Vectorscope</h2>
+                    <div class="videovs-container">
+                        <video id="vectorscopeVideo" autoplay playsinline muted></video>
+                        <canvas id="videoVectorscopeGrid"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -694,6 +706,8 @@
                 document.getElementById('rawVideo').srcObject = e.streams[0];
             } else if (trackId === 'video-vs' || streamId === 'stream-vectorscope') {
                 document.getElementById('vectorscopeVideo').srcObject = e.streams[0];
+            } else if (trackId === 'video-wf' || streamId === 'stream-waveform') {
+                document.getElementById('waveformVideo').srcObject = e.streams[0];
             } else {
                 console.log(`Ignored track ${trackId} (${streamId})`);
             }

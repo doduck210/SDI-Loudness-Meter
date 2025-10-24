@@ -32,7 +32,7 @@ public:
         codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) { std::cerr << "Could not allocate video codec context." << std::endl; return false; }
 
-        codecContext->bit_rate = 4000000;
+        codecContext->bit_rate = 5'000'000;
         codecContext->width = output_width;
         codecContext->height = output_height;
         codecContext->time_base = time_base;
