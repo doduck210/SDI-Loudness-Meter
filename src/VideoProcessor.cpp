@@ -61,8 +61,8 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
         return false;
     }
 
-    const int dst_width = 640;
-    const int dst_height = 360;
+    const int dst_width = width;
+    const int dst_height = height;
     const AVRational time_base = {(int)frameDuration, (int)timeScale};
     const AVRational framerate = {(int)timeScale, (int)frameDuration};
 

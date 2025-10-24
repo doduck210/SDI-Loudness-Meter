@@ -5,6 +5,7 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/error.h>
+#include <libswscale/swscale.h>
 }
 #include "WebRTC.h"
 #include <memory>
@@ -22,6 +23,9 @@ public:
         cleanup();
         webrtc_handler = handler;
 
+        const int output_width = 1280;
+        const int output_height = 720;
+
         const AVCodec* codec = avcodec_find_encoder_by_name("libx264");
         if (!codec) { std::cerr << "Codec libx264 not found." << std::endl; return false; }
 
@@ -29,8 +33,8 @@ public:
         if (!codecContext) { std::cerr << "Could not allocate video codec context." << std::endl; return false; }
 
         codecContext->bit_rate = 4000000;
-        codecContext->width = width;
-        codecContext->height = height;
+        codecContext->width = output_width;
+        codecContext->height = output_height;
         codecContext->time_base = time_base;
         codecContext->framerate = framerate;
         codecContext->gop_size = 30;
@@ -48,6 +52,18 @@ public:
         packet = av_packet_alloc();
         if (!packet) { std::cerr << "Could not allocate packet." << std::endl; return false; }
 
+        swsContext = sws_getContext(width, height, AV_PIX_FMT_YUV420P,
+                                    output_width, output_height, AV_PIX_FMT_YUV420P,
+                                    SWS_BILINEAR, NULL, NULL, NULL);
+        if (!swsContext) { std::cerr << "Could not create scaling context." << std::endl; return false; }
+
+        scaledFrame = av_frame_alloc();
+        if (!scaledFrame) { std::cerr << "Could not allocate scaled frame." << std::endl; return false; }
+        scaledFrame->width = output_width;
+        scaledFrame->height = output_height;
+        scaledFrame->format = AV_PIX_FMT_YUV420P;
+        if (av_frame_get_buffer(scaledFrame, 0) < 0) { std::cerr << "Could not allocate buffer for scaled frame." << std::endl; return false; }
+
         webrtc_handler->RegisterH264Track("video-raw", "stream-raw", "video-raw", 43);
         initialized = true;
         return true;
@@ -56,7 +72,12 @@ public:
     void process_frame(const AVFrame* frame) {
         if (!initialized) return;
 
-        int send_ret = avcodec_send_frame(codecContext, frame);
+        sws_scale(swsContext, (const uint8_t* const*)frame->data, frame->linesize, 0, frame->height,
+                  scaledFrame->data, scaledFrame->linesize);
+        
+        scaledFrame->pts = frame->pts;
+
+        int send_ret = avcodec_send_frame(codecContext, scaledFrame);
         if (send_ret >= 0) {
             while (true) {
                 int recv_ret = avcodec_receive_packet(codecContext, packet);
@@ -84,8 +105,13 @@ public:
     void cleanup() {
         if (codecContext) avcodec_free_context(&codecContext);
         if (packet) av_packet_free(&packet);
+        if (swsContext) sws_freeContext(swsContext);
+        if (scaledFrame) av_frame_free(&scaledFrame);
+
         codecContext = nullptr;
         packet = nullptr;
+        swsContext = nullptr;
+        scaledFrame = nullptr;
         webrtc_handler = nullptr;
         initialized = false;
     }
@@ -93,6 +119,8 @@ public:
 private:
     AVCodecContext* codecContext = nullptr;
     AVPacket* packet = nullptr;
+    SwsContext* swsContext = nullptr;
+    AVFrame* scaledFrame = nullptr;
     std::shared_ptr<WebRTC> webrtc_handler = nullptr;
     bool initialized = false;
 };
