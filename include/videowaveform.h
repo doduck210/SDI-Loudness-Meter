@@ -28,8 +28,8 @@ public:
         cleanup();
         webrtc_handler = handler;
 
-        const int output_width = 1280;
-        const int output_height = 720;
+        const int output_width = 640;
+        const int output_height = 360;
 
         // 1. Initialize filter graph
         filter_graph = avfilter_graph_alloc();
@@ -67,7 +67,7 @@ public:
         inputs->pad_idx = 0;
         inputs->next = nullptr;
 
-        const char* filter_desc = "waveform=i=0.04:g=invert,scale=1280:720";
+        const char* filter_desc = "waveform=i=0.04:g=invert,scale=640:360";
         ret = avfilter_graph_parse_ptr(filter_graph, filter_desc, &inputs, &outputs, nullptr);
         if (ret < 0) { std::cerr << "Failed to parse filter graph" << std::endl; return false; }
 
@@ -84,7 +84,7 @@ public:
         codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) { std::cerr << "Could not allocate waveform codec context." << std::endl; return false; }
 
-        codecContext->bit_rate = 5'000'000;
+        codecContext->bit_rate = 3'000'000;
         codecContext->width = output_width;
         codecContext->height = output_height;
         codecContext->time_base = time_base;
@@ -92,7 +92,7 @@ public:
         codecContext->gop_size = 30;
         codecContext->max_b_frames = 0;
         codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
-        codecContext->profile = FF_PROFILE_H264_MAIN;
+        codecContext->profile = FF_PROFILE_H264_BASELINE;
         codecContext->level = 31;
 
         av_opt_set(codecContext->priv_data, "preset", "ultrafast", 0);

@@ -126,42 +126,9 @@
             box-sizing: border-box;
         }
 
-        .vectorscope-container img,
-        .video-container video {
+        .vectorscope-container img {
             width: 100%;
             height: 100%;
-        }
-
-        .video-container {
-            width: 640px;
-            height: 360px;
-            border: 2px solid #34495e;
-            background-color: #000;
-            box-sizing: border-box;
-        }
-
-        .videovs-container video {
-            width: 100%;
-            height: 100%;
-        }
-
-        .videovs-container {
-            width: 250px;
-            height: 250px;
-            border: 2px solid #34495e;
-            background-color: #000;
-            box-sizing: border-box;
-            position: relative;
-        }
-
-        #videoVectorscopeGrid {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            /* Make sure clicks go through to the video */
         }
 
         .lkfs-widget-container {
@@ -177,7 +144,6 @@
             border-radius: 5px;
             border: 2px solid #34495e;
             height: 240px;
-            /* Adjusted height */
             justify-content: center;
         }
 
@@ -269,22 +235,18 @@
         .correlator-bar {
             position: absolute;
             width: 0;
-            /* Initial width is 0 */
             height: 100%;
             background-color: #27ae60;
             left: 50%;
-            /* Initial position is center */
             border-radius: 2px;
         }
 
         .correlator-scale {
             width: 250px;
-            /* Match container width */
             display: flex;
             justify-content: space-between;
             position: relative;
             top: 5px;
-            /* Adjust position relative to container */
             font-size: 0.8em;
             color: #bdc3c7;
             padding: 0 5px;
@@ -389,7 +351,6 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            /* Align items to the top */
         }
 
         .status-row span:last-child {
@@ -414,23 +375,12 @@
             border: none;
             border-bottom: 3px solid transparent;
             font-size: 1.1em;
+            text-decoration: none;
         }
 
         .tab-btn.active {
             color: #ecf0f1;
             border-bottom: 3px solid #3498db;
-        }
-
-        .tab-content {
-            display: none;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .tab-content.active {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
         }
     </style>
 </head>
@@ -456,11 +406,11 @@
         <h1><span style="position:relative;"><span style="font-size: 0.5em; color: #bdc3c7; position: absolute; right: 100%; white-space: nowrap; top: 50%; transform: translateY(-50%); margin-right: 1ch;">ducky's</span> Ch Six Sense </span></h1>
 
         <div class="tab-nav">
-            <button id="audio-tab-btn" class="tab-btn active">Audio</button>
-            <button id="video-tab-btn" class="tab-btn">Video</button>
+            <a href="/" class="tab-btn active">Audio</a>
+            <a href="/video.html" class="tab-btn">Video</a>
         </div>
 
-        <div id="audio-tab-content" class="tab-content active">
+        <div id="audio-tab-content">
             <div class="monitor-row">
                 <div class="widget-container levels-widget-container">
                     <h2>Levels</h2>
@@ -544,32 +494,6 @@
                 </div>
             </div>
         </div>
-
-        <div id="video-tab-content" class="tab-content">
-            <div class="monitor-row">
-                <div class="widget-container">
-                    <h2>Video</h2>
-                    <div class="video-container">
-                        <video id="rawVideo" autoplay playsinline muted></video>
-                    </div>
-                </div>
-                <div class="widget-container">
-                    <h2>Video Waveform</h2>
-                    <div class="video-container">
-                        <video id="waveformVideo" autoplay playsinline muted></video>
-                    </div>
-                </div>
-            </div>
-            <div class="monitor-row">
-                <div class="widget-container">
-                    <h2>Video Vectorscope</h2>
-                    <div class="videovs-container">
-                        <video id="vectorscopeVideo" autoplay playsinline muted></video>
-                        <canvas id="videoVectorscopeGrid"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="status-display">
@@ -587,7 +511,6 @@
     </div>
 
     <script>
-        // Existing DOM element getters
         const leftMeterFill = document.getElementById('leftMeterFill');
         const rightMeterFill = document.getElementById('rightMeterFill');
         const leftMeterValue = document.getElementById('leftMeterValue');
@@ -612,127 +535,12 @@
         const cpuUsageSpan = document.getElementById('cpu-usage');
         const memUsageSpan = document.getElementById('mem-usage');
 
-        // --- Tab Navigation Logic ---
-        const audioTabBtn = document.getElementById('audio-tab-btn');
-        const videoTabBtn = document.getElementById('video-tab-btn');
-        const audioTabContent = document.getElementById('audio-tab-content');
-        const videoTabContent = document.getElementById('video-tab-content');
-
-        audioTabBtn.addEventListener('click', () => {
-            if (!audioTabBtn.classList.contains('active')) {
-                audioTabBtn.classList.add('active');
-                videoTabBtn.classList.remove('active');
-                audioTabContent.classList.add('active');
-                videoTabContent.classList.remove('active');
-            }
-        });
-
-        videoTabBtn.addEventListener('click', () => {
-            if (!videoTabBtn.classList.contains('active')) {
-                videoTabBtn.classList.add('active');
-                audioTabBtn.classList.remove('active');
-                videoTabContent.classList.add('active');
-                audioTabContent.classList.remove('active');
-            }
-        });
-
         let isIntegrating = false;
 
-        // --- WebRTC Globals ---
-        const pc = new RTCPeerConnection();
-        let makingAnswer = false;
-        let pendingRemoteOffer = null;
-        let currentPubId = null;
-        const pendingIceCandidates = [];
+        const ws = new WebSocket(`ws://${window.location.host}/?role=sub&page=audio`);
 
-        // --- WebSocket connection (now with role=sub) ---
-        const ws = new WebSocket(`ws://${window.location.host}/?role=sub`);
-
-        // --- WebRTC Functions (from viewer.js) ---
-        const handleOffer = async (sdp) => {
-            if (makingAnswer) {
-                pendingRemoteOffer = sdp;
-                return;
-            }
-            makingAnswer = true;
-
-            try {
-                if (pc.signalingState !== "stable") {
-                    try {
-                        await pc.setLocalDescription({ type: "rollback" });
-                    } catch (e) {
-                        console.warn("Rollback failed (this is often fine)", e);
-                    }
-                }
-
-                await pc.setRemoteDescription({ type: "offer", sdp });
-
-                let vtrans = pc.getTransceivers().find(t => t.receiver && t.receiver.track?.kind === "video");
-                if (!vtrans) {
-                    vtrans = pc.addTransceiver("video", { direction: "recvonly" });
-                }
-
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp, to: currentPubId }));
-
-                while (pendingIceCandidates.length) {
-                    const ice = pendingIceCandidates.shift();
-                    try {
-                        await pc.addIceCandidate(ice);
-                    } catch (e) {
-                        console.warn("addIceCandidate(pending) failed", e, ice);
-                    }
-                }
-            } catch (e) {
-                console.error("handleOffer failed:", e);
-            } finally {
-                makingAnswer = false;
-                if (pendingRemoteOffer) {
-                    const next = pendingRemoteOffer;
-                    pendingRemoteOffer = null;
-                    handleOffer(next);
-                }
-            }
-        };
-
-        pc.ontrack = (e) => {
-            const streamId = e.streams[0]?.id;
-            const trackId = e.track.id;
-
-            console.log(`Received track: kind=${e.track.kind}, id=${trackId}, streamId=${streamId}`);
-
-            if (trackId === 'video-raw' || streamId === 'stream-raw') {
-                document.getElementById('rawVideo').srcObject = e.streams[0];
-            } else if (trackId === 'video-vs' || streamId === 'stream-vectorscope') {
-                document.getElementById('vectorscopeVideo').srcObject = e.streams[0];
-            } else if (trackId === 'video-wf' || streamId === 'stream-waveform') {
-                document.getElementById('waveformVideo').srcObject = e.streams[0];
-            } else {
-                console.log(`Ignored track ${trackId} (${streamId})`);
-            }
-        };
-
-        pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                ws.send(JSON.stringify({
-                    type: "candidate",
-                    candidate: e.candidate.candidate,
-                    mid: e.candidate.sdpMid,
-                    sdpMLineIndex: e.candidate.sdpMLineIndex ?? 0,
-                    to: currentPubId,
-                }));
-            }
-        };
-
-        pc.oniceconnectionstatechange = () => console.log("PC ICE State:", pc.iceConnectionState);
-        pc.onconnectionstatechange = () => console.log("PC Connection State:", pc.connectionState);
-
-        // --- WebSocket Listeners ---
         ws.onopen = () => {
             console.log('Connected to WebSocket server');
-            // Request WebRTC offer and existing settings
-            ws.send(JSON.stringify({ type: 'need-offer' }));
             ws.send(JSON.stringify({ command: 'get_settings' }));
         };
 
@@ -741,31 +549,6 @@
                 const text = typeof event.data === "string" ? event.data : await event.data.text();
                 const data = JSON.parse(text);
 
-                // --- WebRTC Signaling Handler ---
-                if (data.type === 'offer') {
-                    console.log("Received WebRTC offer.");
-                    currentPubId = data.from || currentPubId;
-                    handleOffer(data.sdp);
-                    return; // Consumed by WebRTC handler
-                } else if (data.type === 'candidate') {
-                    try {
-                        const ice = {
-                            candidate: data.candidate,
-                            sdpMLineIndex: typeof data.sdpMLineIndex === "number" ? data.sdpMLineIndex : 0,
-                            sdpMid: data.mid ?? null,
-                        };
-                        if (pc.remoteDescription) {
-                            await pc.addIceCandidate(ice);
-                        } else {
-                            pendingIceCandidates.push(ice);
-                        }
-                    } catch (e) {
-                        console.error("addIceCandidate failed", e, data);
-                    }
-                    return; // Consumed by WebRTC handler
-                }
-
-                // --- Existing Telemetry Handler ---
                 if (data.type === 'settings') {
                     leftChannelSelect.value = data.leftAudioChannel;
                     rightChannelSelect.value = data.rightAudioChannel;
@@ -846,7 +629,6 @@
             lraValue.textContent = 'Error';
         };
 
-        // --- Existing Functions and Animation Loop ---
         toggleBtn.onclick = () => {
             const command = isIntegrating ? 'stop_integration' : 'start_integration';
             ws.send(JSON.stringify({ command: command }));
@@ -1018,52 +800,6 @@
         }
 
         createScale();
-
-        const videoVectorscopeCanvas = document.getElementById('videoVectorscopeGrid');
-        if (videoVectorscopeCanvas) {
-            const videoVsCtx = videoVectorscopeCanvas.getContext('2d');
-
-            function drawVideoVectorscopeGrid() {
-                const canvas = videoVectorscopeCanvas;
-                canvas.width = canvas.offsetWidth;
-                canvas.height = canvas.offsetHeight;
-
-                const ctx = videoVsCtx;
-                const width = canvas.width;
-                const height = canvas.height;
-
-                ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-                ctx.lineWidth = 1;
-                ctx.clearRect(0, 0, width, height);
-
-                // XY axes
-                ctx.beginPath();
-                ctx.moveTo(width / 2, 0);
-                ctx.lineTo(width / 2, height);
-                ctx.moveTo(0, height / 2);
-                ctx.lineTo(width, height / 2);
-                ctx.stroke();
-
-                // Diagonal axes
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.lineTo(width, height);
-                ctx.moveTo(0, height);
-                ctx.lineTo(width, 0);
-                ctx.stroke();
-            }
-
-            // Redraw when the video is loaded and playing, as canvas dimensions might not be ready initially
-            const videoVsVideo = document.getElementById('vectorscopeVideo');
-            videoVsVideo.addEventListener('playing', drawVideoVectorscopeGrid);
-
-            // Also draw on resize
-            window.addEventListener('resize', drawVideoVectorscopeGrid);
-
-            // Initial draw
-            drawVideoVectorscopeGrid();
-        }
-
         requestAnimationFrame(animationLoop);
     </script>
 </body>

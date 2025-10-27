@@ -23,8 +23,8 @@ public:
         cleanup();
         webrtc_handler = handler;
 
-        const int output_width = 1280;
-        const int output_height = 720;
+        const int output_width = 640;
+        const int output_height = 360;
 
         const AVCodec* codec = avcodec_find_encoder_by_name("libx264");
         if (!codec) { std::cerr << "Codec libx264 not found." << std::endl; return false; }
@@ -32,7 +32,7 @@ public:
         codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) { std::cerr << "Could not allocate video codec context." << std::endl; return false; }
 
-        codecContext->bit_rate = 5'000'000;
+        codecContext->bit_rate = 3'000'000;
         codecContext->width = output_width;
         codecContext->height = output_height;
         codecContext->time_base = time_base;
@@ -40,7 +40,7 @@ public:
         codecContext->gop_size = 30;
         codecContext->max_b_frames = 0;
         codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
-        codecContext->profile = FF_PROFILE_H264_MAIN;
+        codecContext->profile = FF_PROFILE_H264_BASELINE;
         codecContext->level = 31;
 
         av_opt_set(codecContext->priv_data, "preset", "ultrafast", 0);

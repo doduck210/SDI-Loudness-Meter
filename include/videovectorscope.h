@@ -82,7 +82,7 @@ public:
         codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) { std::cerr << "Could not allocate vectorscope codec context." << std::endl; return false; }
 
-        codecContext->bit_rate = 3000000;
+        codecContext->bit_rate = 2000000;
         codecContext->width = 256;
         codecContext->height = 256;
         codecContext->time_base = time_base;
@@ -90,7 +90,7 @@ public:
         codecContext->gop_size = 30;
         codecContext->max_b_frames = 0;
         codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
-        codecContext->profile = FF_PROFILE_H264_MAIN;
+        codecContext->profile = FF_PROFILE_H264_BASELINE;
         codecContext->level = 31;
 
         av_opt_set(codecContext->priv_data, "preset", "ultrafast", 0);

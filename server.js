@@ -173,12 +173,13 @@ wss.on('connection', (ws, req) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const role = url.searchParams.get("role") || "sub";
     const room = url.searchParams.get("room") || "default";
+    const page = url.searchParams.get("page") || "audio"; // Default to audio
     const id = randomUUID();
 
-    peers.set(ws, { id, role, room });
+    peers.set(ws, { id, role, room, page });
     const R = getRoom(room);
     (role === "pub" ? R.pubs : R.subs).add(ws);
-    console.log(`[JOIN] room=${room} role=${role} id=${id}`);
+    console.log(`[JOIN] room=${room} role=${role} id=${id} page=${page}`);
 
     // If a new subscriber joins, ask the publisher to send an offer.
     if (role === "sub") {
@@ -226,23 +227,14 @@ wss.on('connection', (ws, req) => {
             } else if (msg.command === 'stop_integration') {
                 isIntegrating = false;
             }
-            // Broadcast command to all clients
+
+            const integrationStateMsg = JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating });
+
+            // Broadcast integration state only to audio clients
             wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(msg));
-                }
-            });
-            // Send updated integration state to all clients
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
-                }
-            });
-        } else if (msg.type === 'lkfs' || msg.type === 's_lkfs' || msg.type === 'i_lkfs') {
-            // Broadcast loudness data
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(msg));
+                const peer = peers.get(client);
+                if (peer && peer.page === 'audio' && client.readyState === WebSocket.OPEN) {
+                    client.send(integrationStateMsg);
                 }
             });
         } else if (msg.type === 'vectorscope' && msg.data) {
@@ -268,12 +260,17 @@ wss.on('connection', (ws, req) => {
                 })
                 .catch(err => {});
         } else {
-            // Broadcast any other messages (default behavior)
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(msg));
-                }
-            });
+            // Broadcast audio telemetry only to audio clients
+            const audioTelemetryTypes = ['lkfs', 's_lkfs', 'i_lkfs', 'levels', 'correlation', 'eq', 'lra'];
+            if (audioTelemetryTypes.includes(msg.type)) {
+                const msgStr = JSON.stringify(msg);
+                wss.clients.forEach(client => {
+                    const peer = peers.get(client);
+                    if (peer && peer.page === 'audio' && client.readyState === WebSocket.OPEN) {
+                        client.send(msgStr);
+                    }
+                });
+            }
         }
     });
 
