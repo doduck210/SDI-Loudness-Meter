@@ -228,6 +228,13 @@ wss.on('connection', (ws, req) => {
                 isIntegrating = false;
             }
 
+            // Broadcast command to all clients (the C++ app will listen for this)
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(msg));
+                }
+            });
+
             const integrationStateMsg = JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating });
 
             // Broadcast integration state only to audio clients
