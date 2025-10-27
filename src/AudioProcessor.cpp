@@ -51,8 +51,7 @@ void AudioProcessor::processAudioPacket(IDeckLinkAudioInputPacket* audioFrame) {
         return;
     }
 
-    double maxLeft = 0.0;
-    double maxRight = 0.0;
+    std::vector<double> maxLevels(channelCount, 0.0);
     std::vector<double> current_left_samples;
     std::vector<double> current_right_samples;
     current_left_samples.reserve(sampleFrameCount);
@@ -61,37 +60,54 @@ void AudioProcessor::processAudioPacket(IDeckLinkAudioInputPacket* audioFrame) {
     if (sampleDepth == 32) {
         int32_t* pcmData = (int32_t*)audioFrameBytes;
         for (unsigned int i = 0; i < sampleFrameCount; ++i) {
-            double leftSample = (double)pcmData[i * channelCount + leftChannel] / 2147483648.0;
-            double rightSample = (double)pcmData[i * channelCount + rightChannel] / 2147483648.0;
-            if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
-            if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
-            m_leftChannelPcm.push_back(leftSample);
-            m_rightChannelPcm.push_back(rightSample);
-            m_shortTermLeftChannelPcm.push_back(leftSample);
-            m_shortTermRightChannelPcm.push_back(rightSample);
-            current_left_samples.push_back(leftSample);
-            current_right_samples.push_back(rightSample);
+            for (unsigned int ch = 0; ch < channelCount; ++ch) {
+                double sample = (double)pcmData[i * channelCount + ch] / 2147483648.0;
+                if (std::abs(sample) > maxLevels[ch]) {
+                    maxLevels[ch] = std::abs(sample);
+                }
+                if (ch == leftChannel) {
+                    m_leftChannelPcm.push_back(sample);
+                    m_shortTermLeftChannelPcm.push_back(sample);
+                    current_left_samples.push_back(sample);
+                }
+                if (ch == rightChannel) {
+                    m_rightChannelPcm.push_back(sample);
+                    m_shortTermRightChannelPcm.push_back(sample);
+                    current_right_samples.push_back(sample);
+                }
+            }
         }
     } else if (sampleDepth == 16) {
         int16_t* pcmData = (int16_t*)audioFrameBytes;
         for (unsigned int i = 0; i < sampleFrameCount; ++i) {
-            double leftSample = (double)pcmData[i * channelCount + leftChannel] / 32768.0;
-            double rightSample = (double)pcmData[i * channelCount + rightChannel] / 32768.0;
-            if (std::abs(leftSample) > maxLeft) maxLeft = std::abs(leftSample);
-            if (std::abs(rightSample) > maxRight) maxRight = std::abs(rightSample);
-            m_leftChannelPcm.push_back(leftSample);
-            m_rightChannelPcm.push_back(rightSample);
-            m_shortTermLeftChannelPcm.push_back(leftSample);
-            m_shortTermRightChannelPcm.push_back(rightSample);
-            current_left_samples.push_back(leftSample);
-            current_right_samples.push_back(rightSample);
+            for (unsigned int ch = 0; ch < channelCount; ++ch) {
+                double sample = (double)pcmData[i * channelCount + ch] / 32768.0;
+                if (std::abs(sample) > maxLevels[ch]) {
+                    maxLevels[ch] = std::abs(sample);
+                }
+                if (ch == leftChannel) {
+                    m_leftChannelPcm.push_back(sample);
+                    m_shortTermLeftChannelPcm.push_back(sample);
+                    current_left_samples.push_back(sample);
+                }
+                if (ch == rightChannel) {
+                    m_rightChannelPcm.push_back(sample);
+                    m_shortTermRightChannelPcm.push_back(sample);
+                    current_right_samples.push_back(sample);
+                }
+            }
         }
     }
 
-    double leftDb = (maxLeft > 0.0) ? (20.0 * log10(maxLeft)) : -100.0;
-    double rightDb = (maxRight > 0.0) ? (20.0 * log10(maxRight)) : -100.0;
+    double leftDb = (maxLevels[leftChannel] > 0.0) ? (20.0 * log10(maxLevels[leftChannel])) : -100.0;
+    double rightDb = (maxLevels[rightChannel] > 0.0) ? (20.0 * log10(maxLevels[rightChannel])) : -100.0;
     std::ostringstream oss_levels;
-    oss_levels << "{\"type\": \"levels\", \"left\": " << leftDb << ", \"right\": " << rightDb << "}";
+    oss_levels << "{\"type\": \"levels\", \"left\": " << leftDb << ", \"right\": " << rightDb << ", \"all\": [";
+    for (unsigned int ch = 0; ch < channelCount; ++ch) {
+        double db = (maxLevels[ch] > 0.0) ? (20.0 * log10(maxLevels[ch])) : -100.0;
+        oss_levels << db << (ch == channelCount - 1 ? "" : ",");
+    }
+    oss_levels << "]}";
     m_send_ws_message(oss_levels.str());
 
     if (sampleFrameCount > 0) {
