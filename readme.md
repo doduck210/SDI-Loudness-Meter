@@ -68,18 +68,22 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
         # 3. libdatachannel (for WebRTC)
         git clone https://github.com/paullouisageneau/libdatachannel.git
         cd libdatachannel
+        git submodule update --init --recursive
         mkdir build
         cd build
         cmake .. \
           -DNO_MEDIA=OFF \
           -DNO_WEBSOCKET=OFF \
-          -DPREFER_SYSTEM_LIB=ON \
-          -DCMAKE_BUILD_TYPE=Release
+          -DPREFER_SYSTEM_LIB=OFF \
+          -DCMAKE_INSTALL_PREFIX=../install \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF
         cmake --build . --config Release
+        cmake --install . --config Release
         
         cd ../../.. # Return to the project root directory
         ```
-        *Note: The Makefile assumes the libraries are located in the `libs` directory. After these steps, your directory structure should include `libs/asio-1.28.1`, `libs/websocketpp`, and `libs/libdatachannel` (with build artifacts inside it).*
+        *Note: The Makefile assumes the libraries are located in the `libs` directory. After these steps, your directory structure should include `libs/asio-1.28.1`, `libs/websocketpp`, and `libs/libdatachannel` (with static libraries for `libdatachannel` and its dependencies located in `libs/libdatachannel/install/lib`).*
 
     *   **Node.js Dependencies**:
         Install the necessary packages for the web UI.
