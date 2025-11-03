@@ -34,6 +34,13 @@ public:
         g_fft_in_r = (double*) fftw_malloc(sizeof(double) * kFftSize);
         g_fft_out_r = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (kFftSize / 2 + 1));
         g_fft_plan_r = fftw_plan_dft_r2c_1d(kFftSize, g_fft_in_r, g_fft_out_r, FFTW_ESTIMATE);
+
+        // Precompute A-weighting curve for each FFT bin to avoid recomputation per frame.
+        a_weighting_lookup.resize(kFftSize / 2 + 1);
+        for (size_t i = 0; i < a_weighting_lookup.size(); ++i) {
+            double frequency = (static_cast<double>(kAudioSampleRate) * i) / kFftSize;
+            a_weighting_lookup[i] = computeAWeightingLinear(frequency);
+        }
     }
 
     void processAudio(const double* left_samples, const double* right_samples, unsigned int sample_count, const std::function<void(const std::string&)>& sendMessageCallback) {
@@ -65,6 +72,13 @@ public:
                 magnitudes[i] = normalized_mag * kEqGain;
             }
 
+            // Apply perceptual weighting curve so the display matches common monitor behaviour.
+            if (a_weighting_lookup.size() == magnitudes.size()) {
+                for (size_t i = 0; i < magnitudes.size(); ++i) {
+                    magnitudes[i] *= a_weighting_lookup[i];
+                }
+            }
+
             // Group magnitudes into logarithmic bands
             std::vector<double> bands(kNumBands);
             const double min_freq = 20.0;
@@ -84,13 +98,20 @@ public:
                 if (bin_end >= magnitudes.size()) bin_end = magnitudes.size() - 1;
                 if (bin_start > bin_end) bin_start = bin_end;
 
-                double max_mag = 0.0;
+                double sum_sq = 0.0;
+                int bin_count = 0;
                 for (int j = bin_start; j <= bin_end; ++j) {
-                    if (magnitudes[j] > max_mag) {
-                        max_mag = magnitudes[j];
-                    }
+                    double value = magnitudes[j];
+                    sum_sq += value * value;
+                    ++bin_count;
                 }
-                bands[i] = (max_mag > 0.000001) ? (20.0 * log10(max_mag)) : -60.0;
+
+                double rms = 0.0;
+                if (bin_count > 0) {
+                    rms = sqrt(sum_sq / bin_count);
+                }
+
+                bands[i] = (rms > 0.000001) ? (20.0 * log10(rms)) : -60.0;
             }
 
             // Create JSON message
@@ -114,6 +135,28 @@ private:
     static const int kNumBands = 64;
     static const int kAudioSampleRate = 48000;
 
+    static double computeAWeightingLinear(double frequency) {
+        if (frequency <= 0.0) {
+            return 0.0;
+        }
+
+        const double f2 = frequency * frequency;
+        const double c1 = 20.6 * 20.6;
+        const double c2 = 107.7 * 107.7;
+        const double c3 = 737.9 * 737.9;
+        const double c4 = 12200.0 * 12200.0;
+
+        double numerator = c4 * f2 * f2;
+        double denominator = (f2 + c1) * (f2 + c4) * std::sqrt((f2 + c2) * (f2 + c3));
+        if (denominator <= 0.0) {
+            return 0.0;
+        }
+
+        // Convert A-weighting dB curve to linear magnitude gain.
+        double a_weight_db = 20.0 * std::log10(numerator / denominator) + 2.0;
+        return std::pow(10.0, a_weight_db / 20.0);
+    }
+
     // FFTW resources
     fftw_plan g_fft_plan_l, g_fft_plan_r;
     double *g_fft_in_l, *g_fft_in_r;
@@ -122,4 +165,5 @@ private:
     // Buffers
     std::vector<double> fft_buffer_l;
     std::vector<double> fft_buffer_r;
+    std::vector<double> a_weighting_lookup;
 };
