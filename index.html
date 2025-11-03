@@ -145,6 +145,85 @@
             border: 2px solid #34495e;
         }
 
+        .lkfs-bar-widget-container {
+            width: 200px;
+        }
+
+        .lkfs-bar-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .lkfs-bar-meter-container {
+            display: flex;
+            gap: 6px;
+            align-items: flex-end;
+            justify-content: center;
+            width: 100%;
+            height: 250px;
+        }
+
+        .lkfs-bar-scale {
+            height: 220px;
+            width: 30px;
+            position: relative;
+            color: #bdc3c7;
+            font-size: 0.8em;
+            text-align: right;
+        }
+
+        .lkfs-bar-stack {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            height: 220px;
+            width: 35px;
+            position: relative;
+        }
+
+        .lkfs-bar-meter {
+            width: 35px;
+            height: 220px;
+            border: 2px solid #34495e;
+            background-color: #1c2833;
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .lkfs-bar-fill {
+            width: 100%;
+            height: 0%;
+            background-color: #27ae60;
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            border-radius: 3px;
+        }
+
+        .lkfs-bar-current-value {
+            position: absolute;
+            bottom: -22px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            text-align: center;
+            color: #bdc3c7;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .lkfs-bar-label {
+            position: absolute;
+            bottom: -42px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ecf0f1;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
         .lra-display {
             display: flex;
             flex-direction: column;
@@ -490,6 +569,36 @@
                     </div>
                 </div>
 
+                <div class="widget-container lkfs-bar-widget-container">
+                    <h2>LKFS Bar</h2>
+                    <div class="lkfs-bar-display">
+                        <div class="lkfs-bar-meter-container">
+                            <div class="lkfs-bar-scale" id="lkfsMeterScale"></div>
+                            <div class="lkfs-bar-stack">
+                                <div class="lkfs-bar-meter">
+                                    <div class="lkfs-bar-fill" id="momentaryBar"></div>
+                                    <span class="lkfs-bar-current-value" id="momentaryBarValueDisplay">-inf</span>
+                                    <span class="lkfs-bar-label">M</span>
+                                </div>
+                            </div>
+                            <div class="lkfs-bar-stack">
+                                <div class="lkfs-bar-meter">
+                                    <div class="lkfs-bar-fill" id="shortTermBar"></div>
+                                    <span class="lkfs-bar-current-value" id="shortTermBarValueDisplay">-inf</span>
+                                    <span class="lkfs-bar-label">S</span>
+                                </div>
+                            </div>
+                            <div class="lkfs-bar-stack">
+                                <div class="lkfs-bar-meter">
+                                    <div class="lkfs-bar-fill" id="integratedBar"></div>
+                                    <span class="lkfs-bar-current-value" id="integratedBarValueDisplay">-inf</span>
+                                    <span class="lkfs-bar-label">I</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="widget-container">
                     <h2>Correlator</h2>
                     <div class="correlator-container">
@@ -574,6 +683,13 @@
         const statusContent = document.getElementById('status-content');
         const cpuUsageSpan = document.getElementById('cpu-usage');
         const memUsageSpan = document.getElementById('mem-usage');
+        const lkfsMeterScale = document.getElementById('lkfsMeterScale');
+        const momentaryBar = document.getElementById('momentaryBar');
+        const shortTermBar = document.getElementById('shortTermBar');
+        const integratedBar = document.getElementById('integratedBar');
+        const momentaryBarValueDisplay = document.getElementById('momentaryBarValueDisplay');
+        const shortTermBarValueDisplay = document.getElementById('shortTermBarValueDisplay');
+        const integratedBarValueDisplay = document.getElementById('integratedBarValueDisplay');
 
         let isIntegrating = false;
 
@@ -646,15 +762,15 @@
                 }
 
                 if (data.type === 'lkfs') {
-                    momentaryValue.textContent = data.value.toFixed(2);
+                    handleLkfsUpdate('momentary', data.value, momentaryValue);
                 }
 
                 if (data.type === 's_lkfs') {
-                    shortTermValue.textContent = data.value.toFixed(2);
+                    handleLkfsUpdate('shortTerm', data.value, shortTermValue);
                 }
 
                 if (data.type === 'i_lkfs') {
-                    integratedValue.textContent = data.value.toFixed(2);
+                    handleLkfsUpdate('integrated', data.value, integratedValue);
                 }
 
                 if (data.type === 'lra') {
@@ -675,6 +791,7 @@
             shortTermValue.textContent = 'N/A';
             integratedValue.textContent = 'N/A';
             lraValue.textContent = 'N/A';
+            setLkfsFallbackLabel('N/A');
         };
 
         ws.onerror = error => {
@@ -683,6 +800,7 @@
             shortTermValue.textContent = 'Error';
             integratedValue.textContent = 'Error';
             lraValue.textContent = 'Error';
+            setLkfsFallbackLabel('Error');
         };
 
         toggleBtn.onclick = () => {
@@ -764,7 +882,9 @@
         const minDb = -60.0,
             maxDb = 0.0,
             minDbEq = -40.0,
-            maxDbEq = 5.0;
+            maxDbEq = 5.0,
+            minLkfs = -40.0,
+            maxLkfs = -18.0;
         let meterState = {
             left: {
                 latestValue: minDb,
@@ -788,30 +908,112 @@
             latestValue: 0,
             displayValue: 0
         };
+        let lkfsState = {
+            momentary: {
+                latestValue: minLkfs,
+                displayValue: minLkfs,
+                label: '-inf'
+            },
+            shortTerm: {
+                latestValue: minLkfs,
+                displayValue: minLkfs,
+                label: '-inf'
+            },
+            integrated: {
+                latestValue: minLkfs,
+                displayValue: minLkfs,
+                label: '-inf'
+            }
+        };
+        const lkfsMeterElements = {
+            momentary: {
+                bar: momentaryBar,
+                label: momentaryBarValueDisplay
+            },
+            shortTerm: {
+                bar: shortTermBar,
+                label: shortTermBarValueDisplay
+            },
+            integrated: {
+                bar: integratedBar,
+                label: integratedBarValueDisplay
+            }
+        };
+        const lkfsScalePoints = [-18, -20, -22, -24, -26, -30, -35, -40];
 
         function dbToPercentage(db) {
             let percentage = ((db - minDb) / (maxDb - minDb)) * 100;
             return Math.max(0, Math.min(100, percentage));
         }
 
-        function createScale() {
-            const scalePoints = [0, -6, -12, -18, -24, -30, -40, -50, -60];
+        function createScale(container, scalePoints = [0, -6, -12, -18, -24, -30, -40, -50, -60], mapper = dbToPercentage) {
+            if (!container) return;
+            container.innerHTML = '';
             scalePoints.forEach(db => {
                 const mark = document.createElement('div');
                 mark.className = 'scale-mark';
-                const percentage = dbToPercentage(db);
+                const percentage = mapper(db);
                 mark.style.bottom = `${percentage}%`;
                 mark.innerHTML = `<span>${db}</span>`;
-                meterScale.appendChild(mark);
+                container.appendChild(mark);
             });
         }
 
         function updateMeterDOM(fillElement, dbValue) {
+            if (!fillElement) return;
             const percentage = dbToPercentage(dbValue);
             fillElement.style.height = `${percentage}%`;
             if (dbValue > -6) fillElement.style.backgroundColor = '#e74c3c';
             else if (dbValue > -12) fillElement.style.backgroundColor = '#f1c40f';
             else fillElement.style.backgroundColor = '#27ae60';
+        }
+
+        function lkfsDbToPercentage(db) {
+            let percentage = ((db - minLkfs) / (maxLkfs - minLkfs)) * 100;
+            return Math.max(0, Math.min(100, percentage));
+        }
+
+        function updateLkfsMeter(fillElement, dbValue) {
+            if (!fillElement) return;
+            const percentage = lkfsDbToPercentage(dbValue);
+            fillElement.style.height = `${percentage}%`;
+            if (dbValue >= -22) fillElement.style.backgroundColor = '#e74c3c';
+            else fillElement.style.backgroundColor = '#27ae60';
+        }
+
+        function handleLkfsUpdate(key, value, textElement) {
+            const entry = lkfsState[key];
+            if (!entry) return;
+            if (Number.isFinite(value)) {
+                const clamped = Math.min(Math.max(value, minLkfs), maxLkfs);
+                entry.latestValue = clamped;
+                entry.label = value.toFixed(1);
+                if (textElement) textElement.textContent = value.toFixed(2);
+            } else {
+                entry.latestValue = minLkfs;
+                entry.displayValue = minLkfs;
+                entry.label = '-inf';
+                if (textElement) textElement.textContent = '-inf';
+            }
+            const meter = lkfsMeterElements[key];
+            if (meter && meter.label) meter.label.textContent = entry.label;
+        }
+
+        function setLkfsFallbackLabel(labelText) {
+            Object.keys(lkfsState).forEach(key => {
+                const entry = lkfsState[key];
+                entry.latestValue = minLkfs;
+                entry.displayValue = minLkfs;
+                entry.label = labelText;
+                const meter = lkfsMeterElements[key];
+                if (meter) {
+                    if (meter.label) meter.label.textContent = labelText;
+                    if (meter.bar) {
+                        meter.bar.style.height = '0%';
+                        meter.bar.style.backgroundColor = '#27ae60';
+                    }
+                }
+            });
         }
 
         function drawEq() {
@@ -868,6 +1070,7 @@
 
         let lastFrameTime = performance.now();
         const fallRate = 15;
+        const lkfsFallRate = fallRate * (maxLkfs - minLkfs) / (maxDb - minDb);
 
         function animationLoop(currentTime) {
             const deltaTime = currentTime - lastFrameTime;
@@ -882,6 +1085,17 @@
             updateMeterDOM(rightMeterFill, rightState.displayValue);
             leftMeterValue.textContent = leftState.displayValue.toFixed(1);
             rightMeterValue.textContent = rightState.displayValue.toFixed(1);
+            ['momentary', 'shortTerm', 'integrated'].forEach(key => {
+                const entry = lkfsState[key];
+                const meter = lkfsMeterElements[key];
+                if (!entry || !meter || !meter.bar) return;
+                if (entry.latestValue > entry.displayValue) {
+                    entry.displayValue = entry.latestValue;
+                } else {
+                    entry.displayValue = Math.max(entry.displayValue - lkfsFallRate * (deltaTime / 1000), minLkfs);
+                }
+                updateLkfsMeter(meter.bar, entry.displayValue);
+            });
             for (let i = 0; i < numEqBands; i++) {
                 let band = eqState.bands[i];
                 if (band.latestValue > band.displayValue) band.displayValue = band.latestValue;
@@ -912,7 +1126,8 @@
             requestAnimationFrame(animationLoop);
         }
 
-        createScale();
+        createScale(meterScale);
+        createScale(lkfsMeterScale, lkfsScalePoints, lkfsDbToPercentage);
         requestAnimationFrame(animationLoop);
     </script>
 </body>

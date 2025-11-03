@@ -23,8 +23,8 @@ public:
         cleanup();
         webrtc_handler = handler;
 
-        const int output_width = 640;
-        const int output_height = 360;
+        const int output_width = 1280;
+        const int output_height = 720;
 
         const AVCodec* codec = avcodec_find_encoder_by_name("libx264");
         if (!codec) { std::cerr << "Codec libx264 not found." << std::endl; return false; }
