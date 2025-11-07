@@ -522,7 +522,7 @@
     <div class="main-container">
         <h1><span style="position:relative;"><span
                     style="font-size: 0.5em; color: #bdc3c7; position: absolute; right: 100%; white-space: nowrap; top: 50%; transform: translateY(-50%); margin-right: 1ch;">ducky's</span>
-                Ch Six Sense </span></h1>
+                Ch Sixth Sense </span></h1>
 
         <div class="tab-nav">
             <a href="/" class="tab-btn active">Audio</a>
@@ -632,7 +632,7 @@
                 <div class="widget-container">
                     <h2>Vectorscope</h2>
                     <div class="vectorscope-container">
-                        <img src="/vectorscope.mjpeg" alt="Vectorscope Stream">
+                        <img id="vectorscopeImage" alt="Vectorscope Stream">
                     </div>
                 </div>
             </div>
@@ -690,10 +690,23 @@
         const momentaryBarValueDisplay = document.getElementById('momentaryBarValueDisplay');
         const shortTermBarValueDisplay = document.getElementById('shortTermBarValueDisplay');
         const integratedBarValueDisplay = document.getElementById('integratedBarValueDisplay');
+        const vectorscopeImage = document.getElementById('vectorscopeImage');
 
         let isIntegrating = false;
+        let vectorscopeObjectUrl = null;
+
+        function updateVectorscopeImage(blob) {
+            if (!vectorscopeImage) return;
+            if (vectorscopeObjectUrl) {
+                URL.revokeObjectURL(vectorscopeObjectUrl);
+                vectorscopeObjectUrl = null;
+            }
+            vectorscopeObjectUrl = URL.createObjectURL(blob);
+            vectorscopeImage.src = vectorscopeObjectUrl;
+        }
 
         const ws = new WebSocket(`ws://${window.location.host}/?role=sub&page=audio`);
+        ws.binaryType = 'blob';
 
         ws.onopen = () => {
             console.log('Connected to WebSocket server');
@@ -703,9 +716,14 @@
         };
 
         ws.onmessage = async (event) => {
+            if (typeof event.data !== "string") {
+                const blob = event.data instanceof Blob ? event.data : new Blob([event.data], { type: 'image/jpeg' });
+                updateVectorscopeImage(blob);
+                return;
+            }
+
             try {
-                const text = typeof event.data === "string" ? event.data : await event.data.text();
-                const data = JSON.parse(text);
+                const data = JSON.parse(event.data);
 
                 if (data.type === 'settings') {
                     leftChannelSelect.value = data.leftAudioChannel;
@@ -792,6 +810,10 @@
             integratedValue.textContent = 'N/A';
             lraValue.textContent = 'N/A';
             setLkfsFallbackLabel('N/A');
+            if (vectorscopeObjectUrl) {
+                URL.revokeObjectURL(vectorscopeObjectUrl);
+                vectorscopeObjectUrl = null;
+            }
         };
 
         ws.onerror = error => {
@@ -802,6 +824,13 @@
             lraValue.textContent = 'Error';
             setLkfsFallbackLabel('Error');
         };
+
+        window.addEventListener('beforeunload', () => {
+            if (vectorscopeObjectUrl) {
+                URL.revokeObjectURL(vectorscopeObjectUrl);
+                vectorscopeObjectUrl = null;
+            }
+        });
 
         toggleBtn.onclick = () => {
             const command = isIntegrating ? 'stop_integration' : 'start_integration';

@@ -17,9 +17,9 @@ const rooms = new Map();
 const peers = new Map();
 
 // --- Existing Data Structures ---
-const mjpegClients = new Set();
 let isIntegrating = false;
 let captureProcess = null;
+let latestVectorscopeFrame = null;
 
 // Default settings
 let channelSettings = {
@@ -42,6 +42,26 @@ const safeSend = (ws, obj) => {
         ws.send(JSON.stringify(obj));
     }
 };
+
+function sendVectorscopeFrameToClient(ws, frameBuffer) {
+    if (!frameBuffer) return;
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const meta = peers.get(ws);
+    if (!meta || meta.role !== 'sub' || meta.page !== 'audio') return;
+    if (ws.bufferedAmount > 2 * 1024 * 1024) {
+        return; // Drop frames if client is backlogged.
+    }
+    ws.send(frameBuffer, { binary: true }, err => {
+        if (err) {
+            console.error('Failed to send vectorscope frame to client:', err);
+        }
+    });
+}
+
+function broadcastVectorscopeFrame(frameBuffer) {
+    latestVectorscopeFrame = frameBuffer;
+    wss.clients.forEach(ws => sendVectorscopeFrameToClient(ws, frameBuffer));
+}
 
 // --- System Stats ---
 let lastCpuTimes = os.cpus().map(c => c.times);
@@ -149,22 +169,6 @@ app.post('/api/settings', (req, res) => {
     }
 });
 
-app.get('/vectorscope.mjpeg', (req, res) => {
-    res.writeHead(200, {
-        'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache, no-store, max-age=0, must-revalidate',
-        'Pragma': 'no-cache'
-    });
-    mjpegClients.add(res);
-    console.log(`MJPEG stream client connected. Total clients: ${mjpegClients.size}`);
-
-    req.on('close', () => {
-        mjpegClients.delete(res);
-        console.log(`MJPEG stream client disconnected. Total clients: ${mjpegClients.size}`);
-    });
-});
-
 // --- WebSocket Handling ---
 wss.on('connection', (ws, req) => {
     console.log('WebSocket client connected');
@@ -180,6 +184,10 @@ wss.on('connection', (ws, req) => {
     const R = getRoom(room);
     (role === "pub" ? R.pubs : R.subs).add(ws);
     console.log(`[JOIN] room=${room} role=${role} id=${id} page=${page}`);
+
+    if (role === 'sub' && page === 'audio' && latestVectorscopeFrame) {
+        setImmediate(() => sendVectorscopeFrameToClient(ws, latestVectorscopeFrame));
+    }
 
     // If a new subscriber joins, ask the publisher to send an offer.
     if (role === "sub") {
@@ -245,27 +253,17 @@ wss.on('connection', (ws, req) => {
                 }
             });
         } else if (msg.type === 'vectorscope' && msg.data) {
-            const ppmFrame = Buffer.from(msg.data, 'base64');
-            const headerMatch = ppmFrame.toString('ascii', 0, 30).match(/P6\n(\d+)\s(\d+)\n255\n/);
-            if (!headerMatch) return;
+            const { width, height, data } = msg;
+            if (!width || !height || !data) return;
+            const rawFrame = Buffer.from(data, 'base64');
 
-            const width = parseInt(headerMatch[1], 10);
-            const height = parseInt(headerMatch[2], 10);
-
-            sharp(ppmFrame, { raw: { width, height, channels: 3 } })
+            sharp(rawFrame, { raw: { width, height, channels: 3 } })
                 .jpeg()
                 .toBuffer()
-                .then(jpegFrame => {
-                    mjpegClients.forEach(client => {
-                        client.write('--frame\r\n');
-                        client.write('Content-Type: image/jpeg\r\n');
-                        client.write(`Content-Length: ${jpegFrame.length}\r\n`);
-                        client.write('\r\n');
-                        client.write(jpegFrame);
-                        client.write('\r\n');
-                    });
-                })
-                .catch(err => {});
+                .then(broadcastVectorscopeFrame)
+                .catch(err => {
+                    console.error('Failed to convert vectorscope frame:', err);
+                });
         } else {
             // Broadcast audio telemetry only to audio clients
             const audioTelemetryTypes = ['lkfs', 's_lkfs', 'i_lkfs', 'levels', 'correlation', 'eq', 'lra'];

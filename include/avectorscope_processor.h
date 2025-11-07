@@ -5,6 +5,7 @@
 #include <string>
 #include <stdio.h>
 #include <sstream>
+#include <cstring>
 
 // All FFmpeg includes are now in this header
 extern "C" {
@@ -162,18 +163,26 @@ private:
     AVFilterContext* m_bufferSinkCtx;
 
     static inline void send_vectorscope_ws_impl(AVFrame *pFrame, const std::function<void(const std::string&)>& sendMessageCallback) {
-        std::stringstream ppm_stream;
-        ppm_stream << "P6\n" << pFrame->width << " " << pFrame->height << "\n255\n";
+        const int width = pFrame->width;
+        const int height = pFrame->height;
+        const int rowStride = width * 3;
 
-        for (int y = 0; y < pFrame->height; y++) {
-            ppm_stream.write((char*)pFrame->data[0] + y * pFrame->linesize[0], pFrame->width * 3);
+        std::string rgbBuffer;
+        rgbBuffer.resize(static_cast<size_t>(rowStride) * height);
+        for (int y = 0; y < height; ++y) {
+            memcpy(rgbBuffer.data() + static_cast<size_t>(y) * rowStride,
+                   (char*)pFrame->data[0] + y * pFrame->linesize[0],
+                   rowStride);
         }
 
-        std::string ppm_string = ppm_stream.str();
-        std::string encoded_data = base64_encode(reinterpret_cast<const unsigned char*>(ppm_string.c_str()), ppm_string.length());
+        std::string encoded_data = base64_encode(
+            reinterpret_cast<const unsigned char*>(rgbBuffer.data()),
+            rgbBuffer.size());
 
         std::ostringstream oss;
-        oss << "{\"type\": \"vectorscope\", \"data\": \"" << encoded_data << "\"}";
+        oss << "{\"type\": \"vectorscope\", \"width\": " << width
+            << ", \"height\": " << height
+            << ", \"encoding\": \"rgb\", \"data\": \"" << encoded_data << "\"}";
         sendMessageCallback(oss.str());
     }
 };
