@@ -1,15 +1,15 @@
 :root {
     color-scheme: dark;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --bg: #2c3e50;
-    --panel: #1c2833;
-    --panel-border: #34495e;
-    --panel-shadow: rgba(0, 0, 0, 0.3);
-    --text: #ecf0f1;
-    --text-muted: #bdc3c7;
-    --accent: #3498db;
-    --accent-soft: rgba(52, 152, 219, 0.15);
-    --danger: #e74c3c;
+    --bg: #0f1722;
+    --panel: #182134;
+    --panel-border: #253248;
+    --panel-shadow: rgba(5, 8, 12, 0.6);
+    --text: #f5f6fa;
+    --text-muted: #9fb3ca;
+    --accent: #3fa9f5;
+    --accent-soft: rgba(63, 169, 245, 0.16);
+    --danger: #ff6b6b;
 }
 
 *,
@@ -21,7 +21,7 @@
 body {
     margin: 0;
     min-height: 100vh;
-    background: var(--bg);
+    background: radial-gradient(circle at top, rgba(63, 169, 245, 0.08), transparent 55%), var(--bg);
     color: var(--text);
     display: flex;
     flex-direction: column;
@@ -29,40 +29,43 @@ body {
 }
 
 header {
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--panel-border);
+    padding: 18px 28px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--panel);
-    box-shadow: 0 2px 8px var(--panel-shadow);
+    background: rgba(12, 18, 29, 0.8);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
 
 header h1 {
-    font-size: 1.3rem;
+    font-size: 1.25rem;
     margin: 0;
+    letter-spacing: 0.04em;
 }
 
 main {
     flex: 1;
     display: flex;
     gap: 24px;
-    padding: 24px;
+    padding: 28px;
 }
 
 .control-panel {
     width: 280px;
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 18px;
+    background: linear-gradient(180deg, rgba(31, 43, 61, 0.9), rgba(18, 27, 42, 0.9));
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 18px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
     height: fit-content;
     position: sticky;
-    top: 24px;
-    box-shadow: 0 4px 20px var(--panel-shadow);
+    top: 28px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px);
 }
 
 .control-panel h2 {
@@ -74,22 +77,34 @@ main {
 .control-panel select,
 .control-panel button {
     width: 100%;
-    border-radius: 8px;
-    border: 1px solid var(--panel-border);
-    background: var(--bg);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(5, 10, 18, 0.6);
     color: var(--text);
-    padding: 10px 12px;
+    padding: 11px 14px;
     font-size: 0.95rem;
+    transition: border 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.control-panel select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(63, 169, 245, 0.3);
 }
 
 .control-panel button {
     cursor: pointer;
-    transition: background 0.2s ease, border 0.2s ease;
+    background: linear-gradient(120deg, rgba(63, 169, 245, 0.25), rgba(63, 169, 245, 0.05));
+}
+
+.control-panel button:hover {
+    transform: translateY(-1px);
+    border-color: var(--accent);
 }
 
 .control-panel button.danger {
-    background: rgba(231, 76, 60, 0.1);
-    border-color: var(--danger);
+    background: rgba(255, 107, 107, 0.18);
+    border-color: rgba(255, 107, 107, 0.4);
     color: var(--danger);
 }
 
@@ -104,11 +119,15 @@ main {
 }
 
 .grid-stack {
-    background: rgba(0, 0, 0, 0.15);
+    background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 60px),
+        repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 60px),
+        radial-gradient(circle at top, rgba(63, 169, 245, 0.18), transparent 60%);
     border: 1px dashed rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 12px;
+    border-radius: 22px;
+    padding: 14px;
     min-height: calc(100vh - 120px);
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35);
 }
 
 .grid-stack-item-content {
@@ -130,10 +149,11 @@ main {
     display: flex;
     align-items: stretch;
     justify-content: stretch;
-    background: rgba(0, 0, 0, 0.08);
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 12px;
+    background: rgba(10, 16, 25, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
 }
 
 .legacy-widget-body > * {
@@ -146,29 +166,32 @@ main {
     right: 6px;
     border: none;
     border-radius: 50%;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     cursor: pointer;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.55);
     color: var(--text-muted);
     font-size: 0.8rem;
     z-index: 5;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .widget-remove:hover {
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(255, 107, 107, 0.35);
     color: var(--text);
+    transform: scale(1.05);
 }
 
 .empty-hint {
     text-align: center;
-    padding: 60px 24px;
+    padding: 70px 26px;
     color: var(--text-muted);
     border: 1px dashed rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.04);
     font-size: 0.95rem;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
+    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.35);
 }
 
 @media (max-width: 1080px) {
@@ -185,9 +208,12 @@ main {
 /* Legacy widget appearance */
 .legacy-widget-body .widget-container {
     width: 100%;
+    height: 100%;
     text-align: center;
     margin: 0 auto;
     color: var(--text);
+    display: flex;
+    flex-direction: column;
 }
 
 .legacy-widget-body h2 {
@@ -336,27 +362,14 @@ main {
 
 .legacy-widget-body .lkfs-bar-meter-container {
     display: flex;
-    gap: 6px;
+    gap: 10px;
     align-items: flex-end;
     justify-content: center;
     width: 100%;
     height: 250px;
 }
-
-.legacy-widget-body .lkfs-bar-stack {
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    height: 220px;
-    width: 35px;
+.legacy-widget-body .lkfs-bar-meter-container .level-meter {
     position: relative;
-}
-
-.legacy-widget-body .lkfs-bar-scale,
-.legacy-widget-body .lkfs-bar-meter {
-    border: 2px solid #34495e;
-    background-color: #1c2833;
-    border-radius: 5px;
 }
 
 .legacy-widget-body .lkfs-bar-scale {
@@ -366,41 +379,14 @@ main {
     color: var(--text-muted);
     font-size: 0.8em;
     text-align: right;
+    border-right: 1px solid #4a627a;
 }
 
-.legacy-widget-body .lkfs-bar-meter {
-    width: 35px;
-    height: 220px;
-    position: relative;
-}
-
-.legacy-widget-body .lkfs-bar-fill {
+.legacy-widget-body .lkfs-bar-scale .scale-mark {
+    position: absolute;
     width: 100%;
-    height: 0%;
-    background-color: #27ae60;
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    border-radius: 3px;
-}
-
-.legacy-widget-body .lkfs-bar-current-value,
-.legacy-widget-body .lkfs-bar-label {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    color: var(--text);
-    font-size: 0.8em;
-    font-weight: bold;
-}
-
-.legacy-widget-body .lkfs-bar-current-value {
-    bottom: -22px;
-    color: var(--text-muted);
-}
-
-.legacy-widget-body .lkfs-bar-label {
-    bottom: -42px;
+    border-bottom: 1px solid #4a627a;
+    padding-right: 5px;
 }
 
 .legacy-widget-body .lra-bar-container {
@@ -452,6 +438,7 @@ main {
 
 .legacy-widget-body .eq-widget-container {
     width: 100%;
+    height: 100%;
 }
 
 .legacy-widget-body .eq-canvas {
@@ -459,7 +446,8 @@ main {
     background-color: #1c2833;
     border-radius: 5px;
     width: 100%;
-    height: 240px;
+    height: 100%;
+    min-height: 200px;
 }
 
 .legacy-widget-body .status-panel {
@@ -477,4 +465,8 @@ main {
     justify-content: space-between;
     align-items: center;
     font-size: 0.9rem;
+}
+
+.legacy-widget-body .status-row span:last-child {
+    text-align: right;
 }

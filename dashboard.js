@@ -146,7 +146,6 @@
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container levels-widget-container">
-                        <h2>Levels</h2>
                         <div class="level-meter-container">
                             <div class="scale-container" data-role="scale"></div>
                             <div class="level-meter">
@@ -178,13 +177,12 @@
         lkfsDisplay: {
             title: 'LKFS',
             description: 'Momentary / Short / Integrated readout',
-            defaultSize: { w: 2, h: 3 },
+            defaultSize: { w: 2, h: 2 },
             minW: 2,
             minH: 2,
             mount(root, context) {
                 root.innerHTML = `
                     <div class="widget-container lkfs-widget-container">
-                        <h2>LKFS</h2>
                         <div class="lkfs-display">
                             <div class="lkfs-row">
                                 <span class="lkfs-label">M :</span>
@@ -247,30 +245,23 @@
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container lkfs-bar-widget-container">
-                        <h2>LKFS Bar</h2>
                         <div class="lkfs-bar-display">
                             <div class="lkfs-bar-meter-container">
                                 <div class="lkfs-bar-scale" data-role="lkfs-scale"></div>
-                                <div class="lkfs-bar-stack">
-                                    <div class="lkfs-bar-meter">
-                                        <div class="lkfs-bar-fill" data-role="momentary-bar"></div>
-                                        <span class="lkfs-bar-current-value" data-role="momentary-label">-inf</span>
-                                        <span class="lkfs-bar-label">M</span>
-                                    </div>
+                                <div class="level-meter" data-kind="momentary">
+                                    <div class="meter-fill" data-role="momentary-bar"></div>
+                                    <span class="meter-current-value" data-role="momentary-label">-inf</span>
+                                    <span class="meter-label">M</span>
                                 </div>
-                                <div class="lkfs-bar-stack">
-                                    <div class="lkfs-bar-meter">
-                                        <div class="lkfs-bar-fill" data-role="short-bar"></div>
-                                        <span class="lkfs-bar-current-value" data-role="short-label">-inf</span>
-                                        <span class="lkfs-bar-label">S</span>
-                                    </div>
+                                <div class="level-meter" data-kind="shortTerm">
+                                    <div class="meter-fill" data-role="short-bar"></div>
+                                    <span class="meter-current-value" data-role="short-label">-inf</span>
+                                    <span class="meter-label">S</span>
                                 </div>
-                                <div class="lkfs-bar-stack">
-                                    <div class="lkfs-bar-meter">
-                                        <div class="lkfs-bar-fill" data-role="integrated-bar"></div>
-                                        <span class="lkfs-bar-current-value" data-role="integrated-label">-inf</span>
-                                        <span class="lkfs-bar-label">I</span>
-                                    </div>
+                                <div class="level-meter" data-kind="integrated">
+                                    <div class="meter-fill" data-role="integrated-bar"></div>
+                                    <span class="meter-current-value" data-role="integrated-label">-inf</span>
+                                    <span class="meter-label">I</span>
                                 </div>
                             </div>
                         </div>
@@ -300,13 +291,12 @@
         vectorscope: {
             title: 'Vectorscope',
             description: 'Live luma/chroma vectorscope feed',
-            defaultSize: { w: 3, h: 4 },
+            defaultSize: { w: 3, h: 3 },
             minW: 2,
-            minH: 3,
+            minH: 2,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container">
-                        <h2>Vectorscope</h2>
                         <div class="vectorscope-container">
                             <img alt="Vectorscope Stream">
                         </div>
@@ -336,11 +326,10 @@
             description: 'CPU and memory telemetry',
             defaultSize: { w: 2, h: 2 },
             minW: 2,
-            minH: 2,
+            minH: 1,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container">
-                        <h2>Status</h2>
                         <div class="status-panel">
                             <div class="status-row">
                                 <span>CPU:</span>
@@ -371,13 +360,12 @@
         correlation: {
             title: 'Correlator',
             description: 'Stereo phase correlation meter',
-            defaultSize: { w: 2, h: 2 },
+            defaultSize: { w: 2, h: 1 },
             minW: 2,
-            minH: 2,
+            minH: 1,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container">
-                        <h2>Correlator</h2>
                         <div class="correlator-container">
                             <div class="correlator-bar" data-role="bar"></div>
                         </div>
@@ -405,7 +393,6 @@
                 const container = document.createElement('div');
                 container.className = 'widget-container eq-widget-container';
                 container.innerHTML = `
-                    <h2>EQ Meter</h2>
                     <canvas class="eq-canvas" width="500" height="250"></canvas>
                 `;
                 root.appendChild(container);
@@ -416,7 +403,8 @@
 
                 const resize = () => {
                     const rect = container.getBoundingClientRect();
-                    canvas.width = Math.max(300, rect.width - 20);
+                    canvas.width = Math.max(300, rect.width - 24);
+                    canvas.height = Math.max(200, rect.height - 24);
                     drawEq();
                 };
                 resize();
@@ -439,12 +427,11 @@
             title: 'LRA',
             description: 'Loudness range',
             defaultSize: { w: 2, h: 2 },
-            minW: 1,
+            minW: 2,
             minH: 1,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container lkfs-widget-container">
-                        <h2>LRA</h2>
                         <div class="lra-display">
                             <div class="lkfs-row">
                                 <div style="flex-basis: 100%;">
