@@ -9,3 +9,6 @@
 
 # Editor-specific files
 /.vscode/
+
+# Runtime logs
+/logs/
