@@ -486,6 +486,7 @@
         grid.on('added', debouncedSave);
         grid.on('removed', debouncedSave);
 
+        setupControlToggle();
         setupControls();
         loadLayout();
         updateWidgetPickerState();
@@ -493,6 +494,28 @@
         setupWebSocket();
         requestAnimationFrame(animationLoop);
     });
+
+    function setupControlToggle() {
+        const toggleBtn = document.getElementById('controlToggle');
+        const panel = document.getElementById('controlPanel');
+        if (!toggleBtn || !panel) return;
+
+        const updateLabel = () => {
+            const collapsed = document.body.classList.contains('controls-collapsed');
+            toggleBtn.setAttribute('aria-expanded', (!collapsed).toString());
+            panel.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+            toggleBtn.setAttribute('aria-label', collapsed ? '위젯 메뉴 열기' : '위젯 메뉴 닫기');
+            toggleBtn.textContent = collapsed ? '＋' : '×';
+            toggleBtn.classList.toggle('open', !collapsed);
+        };
+
+        toggleBtn.addEventListener('click', () => {
+            document.body.classList.toggle('controls-collapsed');
+            updateLabel();
+        });
+
+        updateLabel();
+    }
 
     function setupControls() {
         const select = document.getElementById('widgetSelect');
@@ -790,13 +813,14 @@
             else entry.displayValue = Math.max(entry.displayValue - LKFS_FALL_RATE * deltaSeconds, MIN_LKFS);
 
             if (displayRefs?.values[key]) {
-                displayRefs.values[key].textContent = Number.isFinite(entry.displayValue) ? entry.displayValue.toFixed(2) : '-inf';
+                displayRefs.values[key].textContent = entry.label ?? '-inf';
             }
             if (barRefs?.bars[key]) {
                 updateLkfsMeter(barRefs.bars[key], entry.displayValue);
             }
             if (barRefs?.labels[key]) {
-                barRefs.labels[key].textContent = Number.isFinite(entry.displayValue) ? entry.displayValue.toFixed(1) : '-inf';
+                const latest = Number.isFinite(entry.latestValue) ? entry.latestValue.toFixed(1) : '-inf';
+                barRefs.labels[key].textContent = latest;
             }
         });
     }

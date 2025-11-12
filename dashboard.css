@@ -10,6 +10,7 @@
     --accent: #3fa9f5;
     --accent-soft: rgba(63, 169, 245, 0.16);
     --danger: #ff6b6b;
+    --panel-width: 280px;
 }
 
 *,
@@ -37,35 +38,86 @@ header {
     background: rgba(12, 18, 29, 0.8);
     backdrop-filter: blur(12px);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    gap: 16px;
 }
 
-header h1 {
+.header-info h1 {
     font-size: 1.25rem;
     margin: 0;
     letter-spacing: 0.04em;
 }
 
-main {
-    flex: 1;
+.header-info > div {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.header-info {
     display: flex;
-    gap: 24px;
+    flex-direction: column;
+    gap: 4px;
+}
+
+main {
+    position: relative;
+    flex: 1;
     padding: 28px;
 }
 
 .control-panel {
-    width: 280px;
-    background: linear-gradient(180deg, rgba(31, 43, 61, 0.9), rgba(18, 27, 42, 0.9));
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    width: min(320px, calc(100% - 64px));
+    background: linear-gradient(180deg, rgba(31, 43, 61, 0.95), rgba(18, 27, 42, 0.95));
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 18px;
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    height: fit-content;
-    position: sticky;
-    top: 28px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(16px);
+    position: fixed;
+    bottom: 96px;
+    left: 32px;
+    z-index: 20;
+    transform-origin: bottom left;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+body.controls-collapsed .control-panel {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    pointer-events: none;
+}
+
+.floating-toggle {
+    position: fixed;
+    bottom: 32px;
+    left: 32px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: radial-gradient(circle at 30% 30%, rgba(63, 169, 245, 0.4), rgba(63, 169, 245, 0.15));
+    color: var(--text);
+    font-size: 2rem;
+    line-height: 1;
+    cursor: pointer;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(6px);
+    z-index: 25;
+    transition: transform 0.2s ease, background 0.2s ease, border 0.2s ease;
+}
+
+.floating-toggle:hover {
+    transform: translateY(-2px) scale(1.03);
+    border-color: var(--accent);
+    background: radial-gradient(circle at 30% 30%, rgba(63, 169, 245, 0.55), rgba(63, 169, 245, 0.2));
+}
+
+.floating-toggle.open {
+    background: radial-gradient(circle at 30% 30%, rgba(255, 107, 107, 0.5), rgba(255, 107, 107, 0.22));
+    border-color: rgba(255, 107, 107, 0.6);
 }
 
 .control-panel h2 {
@@ -196,12 +248,26 @@ main {
 
 @media (max-width: 1080px) {
     main {
-        flex-direction: column;
+        padding: 20px;
     }
 
     .control-panel {
-        position: static;
-        width: 100%;
+        width: calc(100% - 40px);
+        left: 20px;
+        bottom: 96px;
+    }
+
+    body.controls-collapsed .control-panel {
+        transform: translateY(10px) scale(0.98);
+    }
+
+    .floating-toggle {
+        left: 20px;
+        bottom: 20px;
+    }
+
+    .grid-stack {
+        min-height: calc(100vh - 200px);
     }
 }
 

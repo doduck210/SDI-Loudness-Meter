@@ -9,21 +9,14 @@
     <link rel="stylesheet" href="dashboard.css">
 </head>
 
-<body>
+<body class="controls-collapsed">
     <header>
-        <h1>ducky's Ch Sixth Sense — Dashboard</h1>
-        <div>위젯 배치와 크기는 브라우저에 자동 저장됩니다.</div>
+        <div class="header-info">
+            <h1>ducky's Ch Sixth Sense — Dashboard</h1>
+            <div>위젯 배치와 크기는 브라우저에 자동 저장됩니다.</div>
+        </div>
     </header>
     <main>
-        <section class="control-panel">
-            <h2>위젯 추가</h2>
-            <select id="widgetSelect">
-                <option value="">위젯을 선택하세요</option>
-            </select>
-            <button id="addWidgetBtn" disabled>위젯 추가</button>
-            <hr style="width:100%; border: none; border-top: 1px solid var(--panel-border); opacity: 0.4; margin: 8px 0;">
-            <button id="resetLayoutBtn" class="danger">레이아웃 초기화</button>
-        </section>
         <section class="dashboard-surface">
             <div id="emptyState" class="empty-hint">
                 위젯을 추가해 나만의 화면을 구성하세요.
@@ -31,6 +24,19 @@
             <div class="grid-stack" id="dashboardGrid"></div>
         </section>
     </main>
+    <section class="control-panel" id="controlPanel" aria-hidden="true">
+        <h2>위젯 추가</h2>
+        <select id="widgetSelect">
+            <option value="">위젯을 선택하세요</option>
+        </select>
+        <button id="addWidgetBtn" disabled>위젯 추가</button>
+        <hr style="width:100%; border: none; border-top: 1px solid var(--panel-border); opacity: 0.4; margin: 8px 0;">
+        <button id="resetLayoutBtn" class="danger">레이아웃 초기화</button>
+    </section>
+    <button id="controlToggle" class="floating-toggle" aria-expanded="false" aria-controls="controlPanel"
+        aria-label="위젯 메뉴 열기">
+        ＋
+    </button>
 
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10.1.2/dist/gridstack-all.min.js"></script>
     <script src="dashboard.js"></script>
