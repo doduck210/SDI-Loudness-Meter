@@ -255,6 +255,28 @@ body.fullscreen-mode .floating-fullscreen {
     position: relative;
 }
 
+.grid-stack .ui-resizable-handle {
+    touch-action: none;
+}
+
+.grid-stack .ui-resizable-se,
+.grid-stack .ui-resizable-ne,
+.grid-stack .ui-resizable-sw,
+.grid-stack .ui-resizable-nw {
+    width: 24px;
+    height: 24px;
+}
+
+.grid-stack .ui-resizable-e,
+.grid-stack .ui-resizable-w {
+    width: 10px;
+}
+
+.grid-stack .ui-resizable-s,
+.grid-stack .ui-resizable-n {
+    height: 10px;
+}
+
 .legacy-widget-shell {
     position: relative;
     height: 100%;

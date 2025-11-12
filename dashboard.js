@@ -659,9 +659,9 @@
         eq: {
             title: 'EQ Meter',
             description: '64-band loudness history',
-            defaultSize: { w: 4, h: 4 },
+            defaultSize: { w: 4, h: 3 },
             minW: 3,
-            minH: 3,
+            minH: 2,
             mount(root) {
                 const container = document.createElement('div');
                 container.className = 'widget-container eq-widget-container';
@@ -756,8 +756,8 @@
         videoWaveform: {
             title: 'Video – Waveform',
             description: 'Waveform monitor',
-            defaultSize: { w: 4, h: 3 },
-            minW: 3,
+            defaultSize: { w: 3, h: 2 },
+            minW: 2,
             minH: 2,
             mount(root) {
                 const container = document.createElement('div');
