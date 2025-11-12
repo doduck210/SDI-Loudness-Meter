@@ -43,6 +43,39 @@ const safeSend = (ws, obj) => {
     }
 };
 
+function hasAudioSubscribers() {
+    for (const [socket, meta] of peers.entries()) {
+        if (meta.page === 'audio' && socket.readyState === WebSocket.OPEN) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function detachPeer(ws, reason) {
+    const meta = peers.get(ws);
+    if (!meta) return;
+
+    const { role, room, id } = meta;
+    const R = rooms.get(room);
+    if (R) {
+        (role === "pub" ? R.pubs : R.subs).delete(ws);
+    }
+    peers.delete(ws);
+    console.log(`[LEAVE] room=${room} role=${role} id=${id}${reason ? ` reason=${reason}` : ''}`);
+
+    if (!hasAudioSubscribers()) {
+        latestVectorscopeFrame = null;
+    }
+}
+
+function terminatePeer(ws, reason) {
+    detachPeer(ws, reason);
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.terminate();
+    }
+}
+
 function sendVectorscopeFrameToClient(ws, frameBuffer) {
     if (!frameBuffer) return;
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -54,11 +87,16 @@ function sendVectorscopeFrameToClient(ws, frameBuffer) {
     ws.send(frameBuffer, { binary: true }, err => {
         if (err) {
             console.error('Failed to send vectorscope frame to client:', err);
+            terminatePeer(ws, `send_error:${err.code || err.message}`);
         }
     });
 }
 
 function broadcastVectorscopeFrame(frameBuffer) {
+    if (!hasAudioSubscribers()) {
+        latestVectorscopeFrame = null;
+        return;
+    }
     latestVectorscopeFrame = frameBuffer;
     wss.clients.forEach(ws => sendVectorscopeFrameToClient(ws, frameBuffer));
 }
@@ -253,6 +291,10 @@ wss.on('connection', (ws, req) => {
                 }
             });
         } else if (msg.type === 'vectorscope' && msg.data) {
+            if (!hasAudioSubscribers()) {
+                latestVectorscopeFrame = null;
+                return;
+            }
             const { width, height, data } = msg;
             if (!width || !height || !data) return;
             const rawFrame = Buffer.from(data, 'base64');
@@ -281,16 +323,12 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         console.log('WebSocket client disconnected');
-        const meta = peers.get(ws);
-        if (!meta) return;
+        detachPeer(ws, 'close');
+    });
 
-        const { role, room, id } = meta;
-        const R = rooms.get(room);
-        if (R) {
-            (role === "pub" ? R.pubs : R.subs).delete(ws);
-            peers.delete(ws);
-            console.log(`[LEAVE] room=${room} role=${role} id=${id}`);
-        }
+    ws.on('error', (err) => {
+        console.error('WebSocket client error:', err);
+        terminatePeer(ws, `socket_error:${err.code || err.message}`);
     });
 });
 
