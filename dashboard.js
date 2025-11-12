@@ -88,6 +88,232 @@
         correlator: null
     };
 
+    const videoStreamManager = (() => {
+        const consumers = {
+            raw: new Set(),
+            waveform: new Set(),
+            vectorscope: new Set()
+        };
+        const streams = {
+            raw: null,
+            waveform: null,
+            vectorscope: null
+        };
+
+        let pc = null;
+        let ws = null;
+        let makingAnswer = false;
+        let pendingRemoteOffer = null;
+        let currentPubId = null;
+        const pendingIce = [];
+        let reconnectTimer = null;
+
+        const trackMap = {
+            raw: ['video-raw', 'stream-raw'],
+            vectorscope: ['video-vs', 'stream-vectorscope'],
+            waveform: ['video-wf', 'stream-waveform']
+        };
+
+        const hasConsumers = () => Object.values(consumers).some(set => set.size > 0);
+
+        const scheduleReconnect = () => {
+            if (reconnectTimer || !hasConsumers()) return;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                teardownConnection();
+                if (hasConsumers()) ensureConnection();
+            }, 2000);
+        };
+
+        const teardownConnection = () => {
+            if (ws) {
+                ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null;
+                try {
+                    ws.close();
+                } catch (_) { /* noop */ }
+            }
+            if (pc) {
+                pc.ontrack = pc.onicecandidate = pc.onconnectionstatechange = null;
+                try {
+                    pc.close();
+                } catch (_) { /* noop */ }
+            }
+            ws = null;
+            pc = null;
+            makingAnswer = false;
+            pendingRemoteOffer = null;
+            currentPubId = null;
+            pendingIce.length = 0;
+            Object.keys(streams).forEach(key => {
+                streams[key] = null;
+                consumers[key].forEach(video => {
+                    video.srcObject = null;
+                });
+            });
+        };
+
+        const attachStream = (key, stream) => {
+            streams[key] = stream;
+            consumers[key].forEach(video => {
+                if (video.srcObject !== stream) video.srcObject = stream;
+            });
+        };
+
+        const identifyTrack = (trackId, streamId) => {
+            if (trackMap.raw.includes(trackId) || trackMap.raw.includes(streamId)) return 'raw';
+            if (trackMap.vectorscope.includes(trackId) || trackMap.vectorscope.includes(streamId)) return 'vectorscope';
+            if (trackMap.waveform.includes(trackId) || trackMap.waveform.includes(streamId)) return 'waveform';
+            return null;
+        };
+
+        const handleOffer = async (sdp) => {
+            if (makingAnswer) {
+                pendingRemoteOffer = sdp;
+                return;
+            }
+            makingAnswer = true;
+
+            try {
+                if (pc.signalingState !== 'stable') {
+                    try {
+                        await pc.setLocalDescription({ type: 'rollback' });
+                    } catch (err) {
+                        console.warn('Rollback failed', err);
+                    }
+                }
+
+                await pc.setRemoteDescription({ type: 'offer', sdp });
+
+                let vtrans = pc.getTransceivers().find(t => t.receiver && t.receiver.track?.kind === 'video');
+                if (!vtrans) {
+                    vtrans = pc.addTransceiver('video', { direction: 'recvonly' });
+                }
+
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws?.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, to: currentPubId }));
+
+                while (pendingIce.length) {
+                    const ice = pendingIce.shift();
+                    try {
+                        await pc.addIceCandidate(ice);
+                    } catch (err) {
+                        console.warn('addIceCandidate(pending) failed', err, ice);
+                    }
+                }
+            } catch (err) {
+                console.error('handleOffer failed', err);
+            } finally {
+                makingAnswer = false;
+                if (pendingRemoteOffer) {
+                    const next = pendingRemoteOffer;
+                    pendingRemoteOffer = null;
+                    handleOffer(next);
+                }
+            }
+        };
+
+        const ensureConnection = () => {
+            if (pc || !hasConsumers()) return;
+            pc = new RTCPeerConnection();
+            pc.ontrack = (event) => {
+                const streamId = event.streams[0]?.id;
+                const trackId = event.track.id;
+                const key = identifyTrack(trackId, streamId);
+                if (key) {
+                    attachStream(key, event.streams[0]);
+                } else {
+                    console.log('Unknown video track', trackId, streamId);
+                }
+            };
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    ws?.send(JSON.stringify({
+                        type: 'candidate',
+                        candidate: event.candidate.candidate,
+                        mid: event.candidate.sdpMid,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex ?? 0,
+                        to: currentPubId
+                    }));
+                }
+            };
+            pc.onconnectionstatechange = () => {
+                if (pc && ['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
+                    scheduleReconnect();
+                }
+            };
+            connectSignal();
+        };
+
+        const connectSignal = () => {
+            if (ws || !hasConsumers()) return;
+            ws = new WebSocket(`ws://${window.location.host}/?role=sub&page=video`);
+
+            ws.onopen = () => {
+                ws?.send(JSON.stringify({ type: 'need-offer' }));
+            };
+
+            ws.onmessage = async (event) => {
+                try {
+                    const text = typeof event.data === 'string' ? event.data : await event.data.text();
+                    const data = JSON.parse(text);
+                    if (data.type === 'offer') {
+                        currentPubId = data.from || currentPubId;
+                        if (!pc) ensureConnection();
+                        handleOffer(data.sdp);
+                    } else if (data.type === 'candidate') {
+                        const ice = {
+                            candidate: data.candidate,
+                            sdpMLineIndex: typeof data.sdpMLineIndex === 'number' ? data.sdpMLineIndex : 0,
+                            sdpMid: data.mid ?? null
+                        };
+                        if (pc?.remoteDescription) {
+                            await pc.addIceCandidate(ice);
+                        } else {
+                            pendingIce.push(ice);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Video signaling error', err);
+                }
+            };
+
+            ws.onerror = (err) => {
+                console.error('Video signaling socket error', err);
+            };
+
+            ws.onclose = () => {
+                ws = null;
+                scheduleReconnect();
+            };
+        };
+
+        const register = (key, video) => {
+            consumers[key].add(video);
+            video.autoplay = true;
+            video.playsInline = true;
+            video.muted = true;
+            video.controls = false;
+            if (streams[key]) {
+                video.srcObject = streams[key];
+            }
+            ensureConnection();
+            return () => {
+                consumers[key].delete(video);
+                video.srcObject = null;
+                video.removeAttribute('src');
+                if (!hasConsumers()) {
+                    teardownConnection();
+                }
+            };
+        };
+
+        return {
+            register
+        };
+    })();
+
+
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
     }
@@ -128,6 +354,53 @@
         fillElement.style.backgroundColor = Number.isFinite(dbValue) && dbValue >= -22 ? '#e74c3c' : '#27ae60';
     }
 
+    function createVectorscopeGrid(canvas) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return { draw: () => {}, dispose: () => {} };
+
+        const draw = () => {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            if (width === 0 || height === 0) return;
+            canvas.width = width;
+            canvas.height = height;
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.45)';
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            ctx.moveTo(width / 2, 0);
+            ctx.lineTo(width / 2, height);
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(width, height);
+            ctx.moveTo(0, height);
+            ctx.lineTo(width, 0);
+            ctx.stroke();
+        };
+
+        let resizeObserver = null;
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver(draw);
+            resizeObserver.observe(canvas);
+        } else {
+            window.addEventListener('resize', draw);
+        }
+
+        draw();
+
+        const dispose = () => {
+            if (resizeObserver) resizeObserver.disconnect();
+            else window.removeEventListener('resize', draw);
+        };
+
+        return { draw, dispose };
+    }
+
     function debounce(fn, wait = 200) {
         let timeout;
         return function (...args) {
@@ -140,8 +413,8 @@
         levels: {
             title: 'Levels',
             description: 'Stereo peak meters',
-            defaultSize: { w: 3, h: 4 },
-            minW: 2,
+            defaultSize: { w: 1, h: 3 },
+            minW: 1,
             minH: 3,
             mount(root) {
                 root.innerHTML = `
@@ -458,6 +731,76 @@
                 });
 
                 return () => unsubscribe();
+            }
+        },
+        videoRaw: {
+            title: 'Video – SDI Feed',
+            description: 'Live SDI program video',
+            defaultSize: { w: 4, h: 4 },
+            minW: 3,
+            minH: 3,
+            mount(root) {
+                const container = document.createElement('div');
+                container.className = 'widget-container video-widget';
+                container.innerHTML = `
+                    <div class="video-frame">
+                        <video playsinline autoplay muted></video>
+                    </div>
+                `;
+                root.appendChild(container);
+                const videoEl = container.querySelector('video');
+                const unregister = videoStreamManager.register('raw', videoEl);
+                return () => unregister();
+            }
+        },
+        videoWaveform: {
+            title: 'Video – Waveform',
+            description: 'Waveform monitor',
+            defaultSize: { w: 4, h: 3 },
+            minW: 3,
+            minH: 2,
+            mount(root) {
+                const container = document.createElement('div');
+                container.className = 'widget-container video-widget';
+                container.innerHTML = `
+                    <div class="video-frame">
+                        <video playsinline autoplay muted></video>
+                    </div>
+                `;
+                root.appendChild(container);
+                const videoEl = container.querySelector('video');
+                const unregister = videoStreamManager.register('waveform', videoEl);
+                return () => unregister();
+            }
+        },
+        videoVectorscope: {
+            title: 'Video – Vectorscope',
+            description: 'Video vectorscope overlay',
+            defaultSize: { w: 3, h: 3 },
+            minW: 2,
+            minH: 2,
+            mount(root) {
+                const container = document.createElement('div');
+                container.className = 'widget-container video-widget';
+                container.innerHTML = `
+                    <div class="video-frame">
+                        <video playsinline autoplay muted></video>
+                        <canvas></canvas>
+                    </div>
+                `;
+                root.appendChild(container);
+                const videoEl = container.querySelector('video');
+                const canvas = container.querySelector('canvas');
+                const grid = createVectorscopeGrid(canvas);
+                const unregister = videoStreamManager.register('vectorscope', videoEl);
+                const handlePlaying = () => grid.draw();
+                videoEl.addEventListener('playing', handlePlaying);
+
+                return () => {
+                    videoEl.removeEventListener('playing', handlePlaying);
+                    grid.dispose();
+                    unregister();
+                };
             }
         }
     };
