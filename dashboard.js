@@ -487,6 +487,7 @@
         grid.on('removed', debouncedSave);
 
         setupControlToggle();
+        setupFullscreenToggle();
         setupControls();
         loadLayout();
         updateWidgetPickerState();
@@ -515,6 +516,81 @@
         });
 
         updateLabel();
+    }
+
+    function setupFullscreenToggle() {
+        const btn = document.getElementById('fullscreenToggle');
+        if (!btn) return;
+
+        let wasControlsCollapsed = true;
+
+        const setStaticMode = (isStatic) => {
+            if (!grid) return;
+            if (typeof grid.setStatic === 'function') {
+                grid.setStatic(isStatic);
+            } else {
+                grid.enableMove?.(!isStatic);
+                grid.enableResize?.(!isStatic);
+            }
+        };
+
+        const syncButton = () => {
+            const active = document.body.classList.contains('fullscreen-mode');
+            btn.classList.toggle('open', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            btn.setAttribute('aria-label', active ? '전체화면 종료' : '전체화면 전환');
+            btn.textContent = active ? '⤡' : '⤢';
+        };
+
+        const enterFullscreen = async () => {
+            wasControlsCollapsed = document.body.classList.contains('controls-collapsed');
+            document.body.classList.add('fullscreen-mode');
+            document.body.classList.add('controls-collapsed');
+            setStaticMode(true);
+            syncButton();
+            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+                try {
+                    await document.documentElement.requestFullscreen();
+                } catch (err) {
+                    console.warn('전체화면 진입 실패:', err);
+                }
+            }
+        };
+
+        const exitFullscreen = async () => {
+            document.body.classList.remove('fullscreen-mode');
+            if (!wasControlsCollapsed) {
+                document.body.classList.remove('controls-collapsed');
+            }
+            setStaticMode(false);
+            syncButton();
+            if (document.fullscreenElement && document.exitFullscreen) {
+                try {
+                    await document.exitFullscreen();
+                } catch (err) {
+                    console.warn('전체화면 종료 실패:', err);
+                }
+            }
+        };
+
+        btn.addEventListener('click', () => {
+            const active = document.body.classList.contains('fullscreen-mode');
+            if (active) exitFullscreen();
+            else enterFullscreen();
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && document.body.classList.contains('fullscreen-mode')) {
+                document.body.classList.remove('fullscreen-mode');
+                if (!wasControlsCollapsed) {
+                    document.body.classList.remove('controls-collapsed');
+                }
+                setStaticMode(false);
+                syncButton();
+            }
+        });
+
+        syncButton();
     }
 
     function setupControls() {
