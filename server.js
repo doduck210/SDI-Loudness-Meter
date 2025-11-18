@@ -45,7 +45,7 @@ const safeSend = (ws, obj) => {
 
 function hasAudioSubscribers() {
     for (const [socket, meta] of peers.entries()) {
-        if (meta.page === 'audio' && socket.readyState === WebSocket.OPEN) {
+        if (meta.role === 'sub' && meta.page === 'audio' && socket.readyState === WebSocket.OPEN) {
             return true;
         }
     }
