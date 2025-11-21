@@ -11,6 +11,7 @@ const { randomUUID } = require("crypto");
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const WEB_ROOT = path.join(__dirname, 'web');
 
 // --- WebRTC Signaling Data Structures ---
 const rooms = new Map();
@@ -186,7 +187,7 @@ function startCapture() {
 
 // --- Express Setup ---
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(WEB_ROOT));
 
 app.get('/api/settings', (req, res) => {
     res.json(channelSettings);
