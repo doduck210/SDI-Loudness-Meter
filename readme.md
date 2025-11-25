@@ -30,28 +30,15 @@ This is a loudness meter for SDI signals that uses a Blackmagic DeckLink card. I
 
 2.  **Install Dependencies**
 
-    *   **FFmpeg Libraries**:
-        *On Ubuntu/Debian:*
+    *   **System Libraries (Ubuntu/Debian)**:
+        Install all required development libraries and tools (like FFmpeg, FFTW3, CMake, and OpenSSL) with a single command:
         ```bash
         sudo apt-get update
-        sudo apt-get install libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev
-        ```
-
-    *   **FFTW3 Library**:
-        *On Ubuntu/Debian:*
-        ```bash
-        sudo apt-get update
-        sudo apt-get install libfftw3-dev
+        sudo apt-get install -y libavformat-dev libavfilter-dev libavdevice-dev libavutil-dev libfftw3-dev cmake libssl-dev
         ```
 
     *   **Third-party Libraries (Asio, WebSocket++, & libdatachannel)**:
         This project uses several third-party libraries that need to be placed in the `libs` directory.
-
-        First, ensure you have the necessary build tools for `libdatachannel`:
-        *On Ubuntu/Debian:*
-        ```bash
-        sudo apt-get install cmake libssl-dev
-        ```
 
         Now, set up the libraries:
         ```bash
@@ -103,23 +90,13 @@ make video
 
 ## Usage
 
-1.  **Start the Web Server**:
-    This will start the WebSocket server and serve the web interface.
+1.  **Start the Server**:
+    This will start both the WebSocket server (serving the web interface at `http://localhost:8080`) and automatically launch the `Capture` application.
     ```bash
-    node server.js
+    npm start
     ```
-    The server will be running at `http://localhost:8080`.
 
-2.  **Run the Capture Application**:
-    Open a new terminal and run the `Capture` executable.
-    ```bash
-    ./Capture -d 0 -m -1
-    ```
-    You can use the `-h` flag to see all available options.
-    *   `-d <device_index>`: Selects the DeckLink device to use (starts from 0).
-    *   `-m <display_mode>`: Selects the video display mode. Using `-1` enables auto-detection.
-
-3.  **View the Output**:
+2.  **View the Output**:
     Open your web browser and navigate to `http://localhost:8080` to see the real-time vectorscope and LKFS loudness values.
 
 ## Technical Notes
