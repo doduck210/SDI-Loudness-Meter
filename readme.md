@@ -110,3 +110,36 @@ make video
     *   DeckLink Driver: Desktop Video 14.4.1a4
     *   CPU: 12th Gen Intel(R) Core(TM) i5-12600H
     *   RAM: 16 GB
+
+## Docker
+
+The repository ships with a `Dockerfile` that reproduces the Ubuntu 22.04 toolchain, builds `libdatachannel`, compiles `Capture`, and installs the Node.js server. The container does **not** include the DeckLink driver; you must install Blackmagic Desktop Video on the host and share its devices/libraries with Docker.
+
+1. **Build the image**
+    ```bash
+    docker build -t sdiloudness-meter .
+    ```
+2. **Prepare the host**
+    * Install the DeckLink/Desktop Video driver on the host and verify that `/dev/blackmagic/*` device nodes exist.
+    * Locate the user-space libraries (usually `/usr/lib/blackmagic/libDeckLinkAPI.so`). This directory must be bind-mounted into the container so the `Capture` binary can `dlopen` the SDK just like a native install.
+3. **Run the container**
+    ```bash
+    docker run --rm -it \
+      --name sdiloudness \
+      -p 8080:8080 \
+      --device=/dev/blackmagic/io0 \
+      --device=/dev/blackmagic/io1 \
+      --device=/dev/blackmagic/audio0 \
+      --device=/dev/blackmagic/serial0 \
+      -v /usr/lib/blackmagic:/usr/lib/blackmagic:ro \
+      sdiloudness-meter
+    ```
+    Adjust the `--device` flags to match the device nodes that exist on your workstation (`ls /dev/blackmagic`). The image’s default command runs `node server.js`, which in turn launches the `Capture` binary with the same defaults described earlier. Use the web UI or `curl -X POST http://localhost:8080/api/settings` to change device/mode/channel selections at runtime.
+
+4. **Debugging inside the container (optional)**
+    ```bash
+    docker exec -it sdiloudness bash
+    ```
+    The compiled binary lives at `/app/Capture` if you want to run it manually or pass additional CLI flags. When you are finished, stop the container with `docker stop sdiloudness`.
+
+> **Note:** If your Desktop Video installation stores `libDeckLinkAPI.so` in a different location (e.g. `/opt/BlackmagicDesktopVideo/lib64`), update the bind mount path accordingly. The container sets `LD_LIBRARY_PATH=/usr/lib/blackmagic` so that whatever you mount there is immediately discoverable.

@@ -1,0 +1,27 @@
+# Build outputs
+Capture
+*.o
+*.obj
+*.a
+*.so
+
+# Node modules and logs
+node_modules
+logs
+*.log
+npm-debug.log*
+
+# Editor/OS clutter
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Libdatachannel build artifacts (regenerated inside the container)
+libs/libdatachannel/build
+libs/libdatachannel/install
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
