@@ -24,6 +24,7 @@
     const FALL_RATE = 15;
     const LKFS_FALL_RATE = FALL_RATE * (MAX_LKFS - MIN_LKFS) / (MAX_DB - MIN_DB);
     const CORR_FALL_RATE = 2.0;
+    const PEAK_HOLD_DURATION = 3;
 
     const socketController = { ws: null };
 
@@ -63,8 +64,18 @@
 
     const animationState = {
         meters: {
-            left: { latestValue: MIN_DB, displayValue: MIN_DB },
-            right: { latestValue: MIN_DB, displayValue: MIN_DB }
+            left: {
+                latestValue: MIN_DB,
+                displayValue: MIN_DB,
+                peakHoldValue: MIN_DB,
+                peakHoldTimer: 0
+            },
+            right: {
+                latestValue: MIN_DB,
+                displayValue: MIN_DB,
+                peakHoldValue: MIN_DB,
+                peakHoldTimer: 0
+            }
         },
         lkfs: {
             momentary: { latestValue: MIN_LKFS, displayValue: MIN_LKFS, label: '-inf' },
@@ -423,11 +434,13 @@
                             <div class="scale-container" data-role="scale"></div>
                             <div class="level-meter">
                                 <div class="meter-fill" data-role="left-fill"></div>
+                                <div class="meter-peak-hold" data-role="left-peak"></div>
                                 <span class="meter-current-value" data-role="left-value">-inf</span>
                                 <span class="meter-label">L</span>
                             </div>
                             <div class="level-meter">
                                 <div class="meter-fill" data-role="right-fill"></div>
+                                <div class="meter-peak-hold" data-role="right-peak"></div>
                                 <span class="meter-current-value" data-role="right-value">-inf</span>
                                 <span class="meter-label">R</span>
                             </div>
@@ -438,7 +451,9 @@
                     leftFill: root.querySelector('[data-role="left-fill"]'),
                     rightFill: root.querySelector('[data-role="right-fill"]'),
                     leftValue: root.querySelector('[data-role="left-value"]'),
-                    rightValue: root.querySelector('[data-role="right-value"]')
+                    rightValue: root.querySelector('[data-role="right-value"]'),
+                    leftPeak: root.querySelector('[data-role="left-peak"]'),
+                    rightPeak: root.querySelector('[data-role="right-peak"]')
                 };
                 createScale(root.querySelector('[data-role="scale"]'), LEVEL_SCALE_POINTS, dbToPercentage);
                 uiRefs.meters = refs;
@@ -1212,13 +1227,27 @@
             if (entry.latestValue > entry.displayValue) entry.displayValue = entry.latestValue;
             else entry.displayValue = Math.max(entry.displayValue - FALL_RATE * deltaSeconds, MIN_DB);
 
+            entry.peakHoldTimer = Math.max(0, entry.peakHoldTimer - deltaSeconds);
+            if (entry.latestValue > entry.peakHoldValue) {
+                entry.peakHoldValue = entry.latestValue;
+                entry.peakHoldTimer = PEAK_HOLD_DURATION;
+            } else if (entry.peakHoldTimer === 0 && entry.peakHoldValue > entry.displayValue) {
+                entry.peakHoldValue = entry.displayValue;
+            }
+
             const fill = channel === 'left' ? refs.leftFill : refs.rightFill;
             const valueEl = channel === 'left' ? refs.leftValue : refs.rightValue;
+            const peakEl = channel === 'left' ? refs.leftPeak : refs.rightPeak;
             if (fill) {
                 fill.style.height = `${dbToPercentage(entry.displayValue) * 100}%`;
                 applyMeterColor(fill, entry.displayValue);
             }
             if (valueEl) valueEl.textContent = entry.displayValue.toFixed(1);
+            if (peakEl) {
+                const percent = dbToPercentage(entry.peakHoldValue) * 100;
+                peakEl.style.bottom = `${percent}%`;
+                peakEl.style.opacity = percent <= 0 ? '0' : '1';
+            }
         });
     }
 
