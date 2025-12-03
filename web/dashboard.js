@@ -365,53 +365,6 @@
         fillElement.style.backgroundColor = Number.isFinite(dbValue) && dbValue >= -22 ? '#e74c3c' : '#27ae60';
     }
 
-    function createVectorscopeGrid(canvas) {
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return { draw: () => {}, dispose: () => {} };
-
-        const draw = () => {
-            const width = canvas.clientWidth;
-            const height = canvas.clientHeight;
-            if (width === 0 || height === 0) return;
-            canvas.width = width;
-            canvas.height = height;
-            ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = 'rgba(0, 255, 0, 0.45)';
-            ctx.lineWidth = 1;
-
-            ctx.beginPath();
-            ctx.moveTo(width / 2, 0);
-            ctx.lineTo(width / 2, height);
-            ctx.moveTo(0, height / 2);
-            ctx.lineTo(width, height / 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(width, height);
-            ctx.moveTo(0, height);
-            ctx.lineTo(width, 0);
-            ctx.stroke();
-        };
-
-        let resizeObserver = null;
-        if (typeof ResizeObserver !== 'undefined') {
-            resizeObserver = new ResizeObserver(draw);
-            resizeObserver.observe(canvas);
-        } else {
-            window.addEventListener('resize', draw);
-        }
-
-        draw();
-
-        const dispose = () => {
-            if (resizeObserver) resizeObserver.disconnect();
-            else window.removeEventListener('resize', draw);
-        };
-
-        return { draw, dispose };
-    }
-
     function debounce(fn, wait = 200) {
         let timeout;
         return function (...args) {
@@ -800,22 +753,12 @@
                 container.innerHTML = `
                     <div class="video-frame">
                         <video playsinline autoplay muted></video>
-                        <canvas></canvas>
                     </div>
                 `;
                 root.appendChild(container);
                 const videoEl = container.querySelector('video');
-                const canvas = container.querySelector('canvas');
-                const grid = createVectorscopeGrid(canvas);
                 const unregister = videoStreamManager.register('vectorscope', videoEl);
-                const handlePlaying = () => grid.draw();
-                videoEl.addEventListener('playing', handlePlaying);
-
-                return () => {
-                    videoEl.removeEventListener('playing', handlePlaying);
-                    grid.dispose();
-                    unregister();
-                };
+                return () => unregister();
             }
         }
     };

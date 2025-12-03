@@ -64,8 +64,9 @@ public:
         inputs->pad_idx = 0;
         inputs->next = nullptr;
 
-        const char* filter_desc = "vectorscope=graticule=invert:opacity=1.0:intensity=0.1";
-            //",drawgrid=w=128:h=128:c=white@0.5:t=1";
+        const char* filter_desc = 
+            "vectorscope=mode=color4:graticule=color:opacity=1.0:intensity=1.0,"
+            "format=pix_fmts=yuv420p";
         ret = avfilter_graph_parse_ptr(filter_graph, filter_desc, &inputs, &outputs, nullptr);
         if (ret < 0) { std::cerr << "Failed to parse filter graph" << std::endl; return false; }
 
