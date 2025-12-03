@@ -28,8 +28,8 @@ public:
         cleanup();
         webrtc_handler = handler;
 
-        const int output_width = 640;
-        const int output_height = 360;
+        const int output_width = 1280;
+        const int output_height = 720;
 
         // 1. Initialize filter graph
         filter_graph = avfilter_graph_alloc();
@@ -67,7 +67,9 @@ public:
         inputs->pad_idx = 0;
         inputs->next = nullptr;
 
-        const char* filter_desc = "waveform=i=0.04:g=invert,scale=640:360";
+        const char* filter_desc = 
+            "waveform=i=0.04:g=green:fl=numbers,scale=1280:720,"
+            "format=pix_fmts=yuv420p";
         ret = avfilter_graph_parse_ptr(filter_graph, filter_desc, &inputs, &outputs, nullptr);
         if (ret < 0) { std::cerr << "Failed to parse filter graph" << std::endl; return false; }
 
