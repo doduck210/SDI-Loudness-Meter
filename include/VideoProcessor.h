@@ -3,6 +3,8 @@
 
 #include "DeckLinkAPI.h"
 #include <memory>
+#include <mutex>
+#include <string>
 
 #include "WebRTC.h"
 #include "rawvideoprocessor.h"
@@ -23,6 +25,7 @@ public:
     bool initialize(int width, int height, BMDTimeValue timeScale, BMDTimeValue frameDuration, BMDPixelFormat pixelFormat);
     void processFrame(IDeckLinkVideoInputFrame* frame);
     void stop();
+    void requestVectorScopeModeChange(const std::string& mode);
 
 private:
     void cleanup();
@@ -42,6 +45,9 @@ private:
     std::unique_ptr<RawVideoProcessor> raw_video_processor;
     std::unique_ptr<VideoVectorScope> vector_scope_processor;
     std::unique_ptr<VideoWaveform> waveform_processor;
+
+    std::mutex vectorscopeModeMutex;
+    std::string pendingVectorScopeMode = "color4";
 };
 
 #endif // VIDEOPROCESSOR_H

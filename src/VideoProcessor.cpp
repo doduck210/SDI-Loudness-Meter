@@ -79,7 +79,14 @@ bool VideoProcessor::initialize(int width, int height, BMDTimeValue timeScale, B
         }
 
         vector_scope_processor = std::make_unique<VideoVectorScope>();
-        if (!vector_scope_processor->initialize(dst_width, dst_height, AV_PIX_FMT_YUV420P, time_base, framerate, webrtc_handler)) {
+        std::string initialVectorScopeMode = "color4";
+        {
+            std::lock_guard<std::mutex> lock(vectorscopeModeMutex);
+            if (!pendingVectorScopeMode.empty()) {
+                initialVectorScopeMode = pendingVectorScopeMode;
+            }
+        }
+        if (!vector_scope_processor->initialize(dst_width, dst_height, AV_PIX_FMT_YUV420P, time_base, framerate, webrtc_handler, initialVectorScopeMode)) {
             std::cerr << "[Warning] Failed to initialize VideoVectorScope." << std::endl;
             vector_scope_processor.reset(); // Continue without vectorscope
         }
@@ -147,4 +154,13 @@ void VideoProcessor::processFrame(IDeckLinkVideoInputFrame* frame) {
 
 void VideoProcessor::stop() {
     cleanup();
+}
+
+void VideoProcessor::requestVectorScopeModeChange(const std::string& mode) {
+    const std::string sanitized = mode.empty() ? std::string("color4") : mode;
+    std::lock_guard<std::mutex> lock(vectorscopeModeMutex);
+    pendingVectorScopeMode = sanitized;
+    if (vector_scope_processor) {
+        vector_scope_processor->request_mode_change(sanitized);
+    }
 }

@@ -15,6 +15,7 @@ extern "C" {
 #include <string>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include "WebRTC.h"
 
 class VideoVectorScope {
@@ -24,57 +25,21 @@ public:
         cleanup();
     }
 
-    bool initialize(int width, int height, AVPixelFormat pix_fmt, AVRational time_base, AVRational frame_rate, std::shared_ptr<WebRTC> handler) {
+    bool initialize(int width, int height, AVPixelFormat pix_fmt, AVRational time_base, AVRational frame_rate, std::shared_ptr<WebRTC> handler, const std::string& mode = "color4") {
         cleanup();
         webrtc_handler = handler;
+        input_width = width;
+        input_height = height;
+        input_pix_fmt = pix_fmt;
+        input_time_base = time_base;
+        input_frame_rate = frame_rate;
+        current_mode = sanitize_mode(mode);
+        requested_mode = current_mode;
+        mode_dirty = false;
 
-        // 1. Initialize filter graph
-        filter_graph = avfilter_graph_alloc();
-        if (!filter_graph) {
-            std::cerr << "Failed to allocate filter graph" << std::endl;
+        if (!setup_filter_graph()) {
             return false;
         }
-
-        const AVFilter* buffersrc = avfilter_get_by_name("buffer");
-        const AVFilter* buffersink = avfilter_get_by_name("buffersink");
-        if (!buffersrc || !buffersink) {
-            std::cerr << "Failed to find required buffer filters" << std::endl;
-            return false;
-        }
-
-        char args[512];
-        snprintf(args, sizeof(args),
-            "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:frame_rate=%d/%d:pixel_aspect=1/1",
-            width, height, pix_fmt, time_base.num, time_base.den, frame_rate.num, frame_rate.den);
-
-        int ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in", args, nullptr, filter_graph);
-        if (ret < 0) { std::cerr << "Failed to create buffer source" << std::endl; return false; }
-
-        ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out", nullptr, nullptr, filter_graph);
-        if (ret < 0) { std::cerr << "Failed to create buffer sink" << std::endl; return false; }
-
-        AVFilterInOut* outputs = avfilter_inout_alloc();
-        AVFilterInOut* inputs = avfilter_inout_alloc();
-        outputs->name = av_strdup("in");
-        outputs->filter_ctx = buffersrc_ctx;
-        outputs->pad_idx = 0;
-        outputs->next = nullptr;
-        inputs->name = av_strdup("out");
-        inputs->filter_ctx = buffersink_ctx;
-        inputs->pad_idx = 0;
-        inputs->next = nullptr;
-
-        const char* filter_desc = 
-            "vectorscope=mode=color4:graticule=color:opacity=1.0:intensity=1.0,"
-            "format=pix_fmts=yuv420p";
-        ret = avfilter_graph_parse_ptr(filter_graph, filter_desc, &inputs, &outputs, nullptr);
-        if (ret < 0) { std::cerr << "Failed to parse filter graph" << std::endl; return false; }
-
-        ret = avfilter_graph_config(filter_graph, nullptr);
-        if (ret < 0) { std::cerr << "Failed to configure filter graph" << std::endl; return false; }
-        
-        avfilter_inout_free(&inputs);
-        avfilter_inout_free(&outputs);
 
         // 2. Initialize encoder
         const AVCodec* codec = avcodec_find_encoder_by_name("libx264");
@@ -86,8 +51,8 @@ public:
         codecContext->bit_rate = 2000000;
         codecContext->width = 256;
         codecContext->height = 256;
-        codecContext->time_base = time_base;
-        codecContext->framerate = frame_rate;
+        codecContext->time_base = input_time_base;
+        codecContext->framerate = input_frame_rate;
         codecContext->gop_size = 30;
         codecContext->max_b_frames = 0;
         codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
@@ -121,6 +86,8 @@ public:
     void process_and_encode(const AVFrame* in_frame) {
         if (!initialized) return;
 
+        apply_pending_mode();
+
         // 1. Filter the frame
         if (filter_frame(in_frame, scopeFrame)) {
             scopeFrame->pts = in_frame->pts;
@@ -152,13 +119,7 @@ public:
     }
 
     void cleanup() {
-        if (filter_graph) {
-            avfilter_graph_free(&filter_graph);
-            filter_graph = nullptr;
-        }
-        buffersrc_ctx = nullptr;
-        buffersink_ctx = nullptr;
-
+        cleanup_filter_graph();
         if (codecContext) avcodec_free_context(&codecContext);
         if (packet) av_packet_free(&packet);
         if (scopeFrame) av_frame_free(&scopeFrame);
@@ -170,8 +131,118 @@ public:
         initialized = false;
     }
 
+    void request_mode_change(const std::string& mode) {
+        std::lock_guard<std::mutex> lock(mode_mutex);
+        requested_mode = sanitize_mode(mode);
+        if (requested_mode != current_mode) {
+            mode_dirty = true;
+        }
+    }
+
 private:
+    static std::string sanitize_mode(const std::string& mode) {
+        if (mode.empty()) return "color4";
+        return mode;
+    }
+
+    bool setup_filter_graph() {
+        cleanup_filter_graph();
+
+        filter_graph = avfilter_graph_alloc();
+        if (!filter_graph) {
+            std::cerr << "Failed to allocate filter graph" << std::endl;
+            return false;
+        }
+
+        const AVFilter* buffersrc = avfilter_get_by_name("buffer");
+        const AVFilter* buffersink = avfilter_get_by_name("buffersink");
+        if (!buffersrc || !buffersink) {
+            std::cerr << "Failed to find required buffer filters" << std::endl;
+            return false;
+        }
+
+        char args[512];
+        snprintf(args, sizeof(args),
+            "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:frame_rate=%d/%d:pixel_aspect=1/1",
+            input_width, input_height, input_pix_fmt, input_time_base.num, input_time_base.den, input_frame_rate.num, input_frame_rate.den);
+
+        int ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in", args, nullptr, filter_graph);
+        if (ret < 0) { std::cerr << "Failed to create buffer source" << std::endl; return false; }
+
+        ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out", nullptr, nullptr, filter_graph);
+        if (ret < 0) { std::cerr << "Failed to create buffer sink" << std::endl; return false; }
+
+        AVFilterInOut* outputs = avfilter_inout_alloc();
+        AVFilterInOut* inputs = avfilter_inout_alloc();
+        if (!outputs || !inputs) {
+            std::cerr << "Failed to allocate filter graph in/out" << std::endl;
+            avfilter_inout_free(&inputs);
+            avfilter_inout_free(&outputs);
+            return false;
+        }
+
+        outputs->name = av_strdup("in");
+        outputs->filter_ctx = buffersrc_ctx;
+        outputs->pad_idx = 0;
+        outputs->next = nullptr;
+        inputs->name = av_strdup("out");
+        inputs->filter_ctx = buffersink_ctx;
+        inputs->pad_idx = 0;
+        inputs->next = nullptr;
+
+        std::string filter_desc = "vectorscope=mode=" + current_mode + ":graticule=color:opacity=1.0:intensity=1.0,format=pix_fmts=yuv420p";
+        ret = avfilter_graph_parse_ptr(filter_graph, filter_desc.c_str(), &inputs, &outputs, nullptr);
+        if (ret < 0) {
+            std::cerr << "Failed to parse filter graph" << std::endl;
+            avfilter_inout_free(&inputs);
+            avfilter_inout_free(&outputs);
+            return false;
+        }
+
+        ret = avfilter_graph_config(filter_graph, nullptr);
+        if (ret < 0) {
+            std::cerr << "Failed to configure filter graph" << std::endl;
+            avfilter_inout_free(&inputs);
+            avfilter_inout_free(&outputs);
+            return false;
+        }
+
+        avfilter_inout_free(&inputs);
+        avfilter_inout_free(&outputs);
+        return true;
+    }
+
+    void cleanup_filter_graph() {
+        if (filter_graph) {
+            avfilter_graph_free(&filter_graph);
+            filter_graph = nullptr;
+        }
+        buffersrc_ctx = nullptr;
+        buffersink_ctx = nullptr;
+    }
+
+    void apply_pending_mode() {
+        std::string newMode;
+        {
+            std::lock_guard<std::mutex> lock(mode_mutex);
+            if (!mode_dirty || requested_mode == current_mode) {
+                mode_dirty = false;
+                return;
+            }
+            newMode = requested_mode;
+            mode_dirty = false;
+        }
+
+        current_mode = newMode;
+        if (!setup_filter_graph()) {
+            std::cerr << "[Warning] Failed to apply vectorscope mode " << newMode << std::endl;
+        }
+    }
+
     bool filter_frame(const AVFrame* in_frame, AVFrame* out_frame) {
+        if (!buffersrc_ctx || !buffersink_ctx) {
+            return false;
+        }
         int ret = av_buffersrc_add_frame_flags(buffersrc_ctx, (AVFrame*)in_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
         if (ret < 0) {
             std::cerr << "Error while feeding the filtergraph" << std::endl;
@@ -201,5 +272,16 @@ private:
     AVFrame* scopeFrame = nullptr;
     // webrtc
     std::shared_ptr<WebRTC> webrtc_handler = nullptr;
+
+    int input_width = 0;
+    int input_height = 0;
+    AVPixelFormat input_pix_fmt = AV_PIX_FMT_NONE;
+    AVRational input_time_base{0, 1};
+    AVRational input_frame_rate{0, 1};
+    std::string current_mode = "color4";
+    std::string requested_mode = "color4";
+    std::mutex mode_mutex;
+    bool mode_dirty = false;
+
     bool initialized = false;
 };

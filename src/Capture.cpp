@@ -49,6 +49,7 @@
 #include <deque>
 #include <numeric>
 #include <sstream>
+#include <cctype>
 
 #include <websocketpp/config/asio_no_tls_client.hpp>
 #include <websocketpp/client.hpp>
@@ -130,6 +131,35 @@ void on_ws_close(client* c, websocketpp::connection_hdl hdl) {
     fflush(stderr);
 }
 
+static std::string extract_json_string(const std::string& payload, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    size_t pos = payload.find(needle);
+    if (pos == std::string::npos) return {};
+    pos = payload.find(':', pos + needle.size());
+    if (pos == std::string::npos) return {};
+    ++pos;
+    while (pos < payload.size() && std::isspace(static_cast<unsigned char>(payload[pos]))) {
+        ++pos;
+    }
+    if (pos >= payload.size() || payload[pos] != '"') {
+        return {};
+    }
+    ++pos;
+    std::string value;
+    while (pos < payload.size()) {
+        char ch = payload[pos];
+        if (ch == '\\' && pos + 1 < payload.size()) {
+            value.push_back(payload[pos + 1]);
+            pos += 2;
+            continue;
+        }
+        if (ch == '"') break;
+        value.push_back(ch);
+        ++pos;
+    }
+    return value;
+}
+
 void on_ws_message(client* c, websocketpp::connection_hdl hdl, client::message_ptr msg) {
     std::string payload = msg->get_payload();
     if (payload.find("\"command\"") != std::string::npos && payload.find("\"start_integration\"") != std::string::npos) {
@@ -137,6 +167,14 @@ void on_ws_message(client* c, websocketpp::connection_hdl hdl, client::message_p
     } else if (payload.find("\"command\"") != std::string::npos && payload.find("\"stop_integration\"") != std::string::npos) {
         g_audioProcessor.stopIntegration();
     }
+#ifdef ENABLE_VIDEO_PROCESSING
+    else if (payload.find("\"command\"") != std::string::npos && payload.find("\"set_vectorscope_mode\"") != std::string::npos) {
+        std::string mode = extract_json_string(payload, "mode");
+        if (!mode.empty()) {
+            g_videoProcessor.requestVectorScopeModeChange(mode);
+        }
+    }
+#endif
 }
 
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate() :
