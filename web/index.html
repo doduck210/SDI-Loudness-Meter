@@ -80,6 +80,18 @@
             border-radius: 2px;
         }
 
+        .meter-peak-hold {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(1px);
+            transition: opacity 0.15s ease;
+        }
+
         .meter-label {
             position: absolute;
             bottom: -42px;
@@ -537,11 +549,13 @@
                         <div class="scale-container" id="meterScale"></div>
                         <div class="level-meter">
                             <div class="meter-fill" id="leftMeterFill"></div>
+                            <div class="meter-peak-hold" id="leftPeakHold"></div>
                             <span class="meter-current-value" id="leftMeterValue">-inf</span>
                             <span class="meter-label">L</span>
                         </div>
                         <div class="level-meter">
                             <div class="meter-fill" id="rightMeterFill"></div>
+                            <div class="meter-peak-hold" id="rightPeakHold"></div>
                             <span class="meter-current-value" id="rightMeterValue">-inf</span>
                             <span class="meter-label">R</span>
                         </div>
@@ -664,6 +678,8 @@
         const rightMeterFill = document.getElementById('rightMeterFill');
         const leftMeterValue = document.getElementById('leftMeterValue');
         const rightMeterValue = document.getElementById('rightMeterValue');
+        const leftPeakHold = document.getElementById('leftPeakHold');
+        const rightPeakHold = document.getElementById('rightPeakHold');
         const meterScale = document.getElementById('meterScale');
         const momentaryValue = document.getElementById('momentaryValue');
         const shortTermValue = document.getElementById('shortTermValue');
@@ -917,11 +933,15 @@
         let meterState = {
             left: {
                 latestValue: minDb,
-                displayValue: minDb
+                displayValue: minDb,
+                peakHoldValue: minDb,
+                peakHoldTimer: 0
             },
             right: {
                 latestValue: minDb,
-                displayValue: minDb
+                displayValue: minDb,
+                peakHoldValue: minDb,
+                peakHoldTimer: 0
             }
         };
         const numEqBands = 64;
@@ -995,6 +1015,22 @@
             if (dbValue > -6) fillElement.style.backgroundColor = '#e74c3c';
             else if (dbValue > -12) fillElement.style.backgroundColor = '#f1c40f';
             else fillElement.style.backgroundColor = '#27ae60';
+        }
+
+        function updatePeakHoldIndicator(entry, peakElement, deltaSeconds) {
+            if (!entry) return;
+            entry.peakHoldTimer = Math.max(0, entry.peakHoldTimer - deltaSeconds);
+            if (entry.latestValue > entry.peakHoldValue) {
+                entry.peakHoldValue = entry.latestValue;
+                entry.peakHoldTimer = peakHoldDuration;
+            } else if (entry.peakHoldTimer === 0 && entry.peakHoldValue > entry.displayValue) {
+                entry.peakHoldValue = entry.displayValue;
+            }
+            if (peakElement) {
+                const percentage = dbToPercentage(entry.peakHoldValue);
+                peakElement.style.bottom = `${percentage}%`;
+                peakElement.style.opacity = percentage <= 0 ? '0' : '1';
+            }
         }
 
         function lkfsDbToPercentage(db) {
@@ -1099,19 +1135,23 @@
 
         let lastFrameTime = performance.now();
         const fallRate = 15;
+        const peakHoldDuration = 3;
         const lkfsFallRate = fallRate * (maxLkfs - minLkfs) / (maxDb - minDb);
 
         function animationLoop(currentTime) {
             const deltaTime = currentTime - lastFrameTime;
+            const deltaSeconds = deltaTime / 1000;
             lastFrameTime = currentTime;
             let leftState = meterState.left;
             if (leftState.latestValue > leftState.displayValue) leftState.displayValue = leftState.latestValue;
-            else leftState.displayValue = Math.max(leftState.displayValue - fallRate * (deltaTime / 1000), minDb);
+            else leftState.displayValue = Math.max(leftState.displayValue - fallRate * deltaSeconds, minDb);
             let rightState = meterState.right;
             if (rightState.latestValue > rightState.displayValue) rightState.displayValue = rightState.latestValue;
-            else rightState.displayValue = Math.max(rightState.displayValue - fallRate * (deltaTime / 1000), minDb);
+            else rightState.displayValue = Math.max(rightState.displayValue - fallRate * deltaSeconds, minDb);
             updateMeterDOM(leftMeterFill, leftState.displayValue);
             updateMeterDOM(rightMeterFill, rightState.displayValue);
+            updatePeakHoldIndicator(leftState, leftPeakHold, deltaSeconds);
+            updatePeakHoldIndicator(rightState, rightPeakHold, deltaSeconds);
             leftMeterValue.textContent = leftState.displayValue.toFixed(1);
             rightMeterValue.textContent = rightState.displayValue.toFixed(1);
             ['momentary', 'shortTerm', 'integrated'].forEach(key => {
