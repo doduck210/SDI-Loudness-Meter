@@ -83,7 +83,7 @@ public:
         codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) { std::cerr << "Could not allocate vectorscope codec context." << std::endl; return false; }
 
-        codecContext->bit_rate = 2000000;
+        codecContext->bit_rate = 500'000;
         codecContext->width = 256;
         codecContext->height = 256;
         codecContext->time_base = time_base;

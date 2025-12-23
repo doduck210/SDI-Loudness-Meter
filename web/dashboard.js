@@ -790,6 +790,7 @@
         setupControlToggle();
         setupFullscreenToggle();
         setupControls();
+        setupLayoutTransfer();
         loadLayout();
         updateWidgetPickerState();
         toggleEmptyState(document.getElementById('emptyState'));
@@ -1006,7 +1007,12 @@
     }
 
     function saveLayout() {
-        if (!grid) return;
+        const layout = getCurrentLayout();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    }
+
+    function getCurrentLayout() {
+        if (!grid) return [];
         const layout = [];
         grid.engine.nodes.forEach(node => {
             layout.push({
@@ -1017,7 +1023,7 @@
                 h: node.h
             });
         });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+        return layout;
     }
 
     function loadLayout() {
@@ -1028,7 +1034,12 @@
             console.warn('Failed to parse saved layout, using defaults.', err);
         }
         const layout = Array.isArray(saved) && saved.length ? saved : DEFAULT_LAYOUT;
-        layout.forEach(node => addWidget(node.id, node));
+        try {
+            applyLayout(layout);
+        } catch (err) {
+            console.warn('Failed to apply saved layout, using defaults.', err);
+            applyLayout(DEFAULT_LAYOUT);
+        }
     }
 
     function sendCommand(payload) {
@@ -1037,6 +1048,92 @@
             return;
         }
         socketController.ws.send(JSON.stringify(payload));
+    }
+
+    function applyLayout(layout) {
+        if (!Array.isArray(layout)) {
+            throw new Error('레이아웃 데이터 형식이 올바르지 않습니다.');
+        }
+        removeAllWidgets();
+        layout.forEach(node => {
+            if (!node || typeof node.id !== 'string') {
+                throw new Error('위젯 ID가 누락되었습니다.');
+            }
+            addWidget(node.id, {
+                id: node.id,
+                x: Number.isFinite(node.x) ? node.x : undefined,
+                y: Number.isFinite(node.y) ? node.y : undefined,
+                w: Number.isFinite(node.w) ? node.w : undefined,
+                h: Number.isFinite(node.h) ? node.h : undefined
+            });
+        });
+        updateWidgetPickerState();
+        toggleEmptyState(document.getElementById('emptyState'));
+        saveLayout();
+    }
+
+    function setupLayoutTransfer() {
+        const exportBtn = document.getElementById('exportLayoutBtn');
+        const importBtn = document.getElementById('importLayoutBtn');
+        const importInput = document.getElementById('importLayoutInput');
+        if (!exportBtn || !importBtn || !importInput) return;
+
+        const downloadLayoutFile = () => {
+            const layout = getCurrentLayout();
+            const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const userName = prompt('레이아웃 파일 이름을 입력하세요 (확장자 제외)', `sdilm-layout-${timestamp}`) || '';
+            const safeName = userName
+                .trim()
+                .replace(/[\\/:*?"<>|]+/g, '')
+                .replace(/\s+/g, '_')
+                || `sdilm-layout-${timestamp}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${safeName}.json`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+        };
+
+        exportBtn.addEventListener('click', () => {
+            try {
+                downloadLayoutFile();
+            } catch (err) {
+                console.error('레이아웃 저장 실패', err);
+                alert('레이아웃 저장 중 문제가 발생했습니다.');
+            }
+        });
+
+        importBtn.addEventListener('click', () => importInput.click());
+
+        importInput.addEventListener('change', () => {
+            const file = importInput.files && importInput.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const parsed = JSON.parse(reader.result);
+                    applyLayout(parsed);
+                    alert('레이아웃을 성공적으로 불러왔습니다.');
+                } catch (err) {
+                    console.error('레이아웃 불러오기 실패', err);
+                    alert('레이아웃 파일을 읽는 데 실패했습니다. JSON 형식을 확인하세요.');
+                } finally {
+                    importInput.value = '';
+                }
+            };
+            reader.onerror = () => {
+                console.error('레이아웃 파일 읽기 실패', reader.error);
+                alert('레이아웃 파일을 읽을 수 없습니다.');
+                importInput.value = '';
+            };
+            reader.readAsText(file, 'utf-8');
+        });
     }
 
     function setupWebSocket() {

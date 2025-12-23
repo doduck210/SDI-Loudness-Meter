@@ -59,6 +59,38 @@ header {
     gap: 4px;
 }
 
+.layout-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.layout-actions-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.layout-actions button {
+    background: rgba(63, 169, 245, 0.2);
+    border: 1px solid rgba(63, 169, 245, 0.4);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s ease, border 0.2s ease;
+}
+
+.layout-actions button:hover {
+    background: rgba(63, 169, 245, 0.35);
+    border-color: rgba(63, 169, 245, 0.7);
+}
+
 main {
     position: relative;
     flex: 1;
