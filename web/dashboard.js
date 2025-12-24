@@ -858,6 +858,12 @@
         const panel = document.getElementById('controlPanel');
         if (!toggleBtn || !panel) return;
 
+        const hidePanel = () => {
+            if (document.body.classList.contains('controls-collapsed')) return;
+            document.body.classList.add('controls-collapsed');
+            updateLabel();
+        };
+
         const updateLabel = () => {
             const collapsed = document.body.classList.contains('controls-collapsed');
             toggleBtn.setAttribute('aria-expanded', (!collapsed).toString());
@@ -870,6 +876,12 @@
         toggleBtn.addEventListener('click', () => {
             document.body.classList.toggle('controls-collapsed');
             updateLabel();
+        });
+
+        panel.addEventListener('click', (evt) => evt.stopPropagation());
+        document.addEventListener('click', (evt) => {
+            if (panel.contains(evt.target) || evt.target === toggleBtn) return;
+            hidePanel();
         });
 
         updateLabel();
