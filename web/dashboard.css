@@ -39,6 +39,8 @@ header {
     backdrop-filter: blur(12px);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
     gap: 16px;
+    position: relative;
+    z-index: 1200;
 }
 
 .header-info h1 {
@@ -51,6 +53,145 @@ header {
     font-size: 0.9rem;
     color: var(--text-muted);
     margin-top: 6px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.channel-settings {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+#channelSettingsToggle {
+    background: rgba(63, 169, 245, 0.16);
+    border: 1px solid rgba(63, 169, 245, 0.4);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+}
+
+#channelSettingsToggle:hover {
+    background: rgba(63, 169, 245, 0.26);
+    border-color: rgba(63, 169, 245, 0.7);
+    transform: translateY(-1px);
+}
+
+.channel-settings-panel {
+    position: fixed;
+    top: 88px;
+    right: 32px;
+    background: linear-gradient(180deg, #1a2436, #111a2a);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+    padding: 14px 16px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 220px;
+    z-index: 5000;
+}
+
+.channel-settings-panel.open {
+    display: flex;
+}
+
+.channel-settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.channel-meter-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.meter-grid {
+    gap: 10px;
+}
+
+.channel-meters {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.channel-meter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.channel-meter-bar {
+    width: 12px;
+    height: 70px;
+    border: 1px solid #30405b;
+    background: #0f1722;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.channel-meter-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    background: #27ae60;
+    border-radius: 2px;
+    transition: height 0.08s linear, background 0.12s ease;
+}
+
+.channel-meter-number {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.channel-settings-row label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.channel-settings-row select {
+    background: #0f1722;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+}
+
+#channelSettingsSave {
+    margin-top: 4px;
+    padding: 10px 12px;
+    background: var(--accent);
+    color: #0b1220;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#channelSettingsSave:hover {
+    background: #5bb8ff;
+    transform: translateY(-1px);
 }
 
 .header-info {

@@ -22,6 +22,27 @@
                 </div>
             </div>
         </div>
+        <div class="header-actions">
+            <div class="channel-settings">
+                <button type="button" id="channelSettingsToggle" aria-expanded="false"
+                    aria-controls="channelSettingsPanel">⚙️ 채널</button>
+                <div id="channelSettingsPanel" class="channel-settings-panel" aria-hidden="true">
+                    <div class="channel-settings-row meter-grid">
+                        <span class="channel-meter-label">채널 입력 레벨</span>
+                        <div class="channel-meters" id="channelSettingsMeters"></div>
+                    </div>
+                    <div class="channel-settings-row">
+                        <label for="channelSettingLeft">Left</label>
+                        <select id="channelSettingLeft"></select>
+                    </div>
+                    <div class="channel-settings-row">
+                        <label for="channelSettingRight">Right</label>
+                        <select id="channelSettingRight"></select>
+                    </div>
+                    <button type="button" id="channelSettingsSave">저장</button>
+                </div>
+            </div>
+        </div>
     </header>
     <main>
         <section class="dashboard-surface">

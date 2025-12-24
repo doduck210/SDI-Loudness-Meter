@@ -98,6 +98,7 @@
         eq: null,
         correlator: null
     };
+    const channelMeterFills = [];
 
     const videoStreamManager = (() => {
         const consumers = {
@@ -841,6 +842,7 @@
         grid.on('removed', debouncedSave);
 
         setupControlToggle();
+        setupChannelSettingsPanel();
         setupFullscreenToggle();
         setupControls();
         setupLayoutTransfer();
@@ -871,6 +873,139 @@
         });
 
         updateLabel();
+    }
+
+    function setupChannelSettingsPanel() {
+        const toggleBtn = document.getElementById('channelSettingsToggle');
+        const panel = document.getElementById('channelSettingsPanel');
+        const leftSelect = document.getElementById('channelSettingLeft');
+        const rightSelect = document.getElementById('channelSettingRight');
+        const saveBtn = document.getElementById('channelSettingsSave');
+        const metersContainer = document.getElementById('channelSettingsMeters');
+        if (!toggleBtn || !panel || !leftSelect || !rightSelect || !saveBtn) return;
+
+        const hidePanel = () => {
+            panel.classList.remove('open');
+            panel.setAttribute('aria-hidden', 'true');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        };
+
+        const showPanel = () => {
+            const rect = toggleBtn.getBoundingClientRect();
+            panel.style.top = `${rect.bottom + 8}px`;
+            panel.style.right = `${window.innerWidth - rect.right}px`;
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        };
+
+        const togglePanel = () => {
+            const isOpen = panel.classList.contains('open');
+            if (isOpen) hidePanel();
+            else showPanel();
+        };
+
+        toggleBtn.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            togglePanel();
+        });
+
+        panel.addEventListener('click', (evt) => evt.stopPropagation());
+
+        document.addEventListener('click', (evt) => {
+            if (!panel.classList.contains('open')) return;
+            if (panel.contains(evt.target) || evt.target === toggleBtn) return;
+            hidePanel();
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!panel.classList.contains('open')) return;
+            const rect = toggleBtn.getBoundingClientRect();
+            panel.style.top = `${rect.bottom + 8}px`;
+            panel.style.right = `${window.innerWidth - rect.right}px`;
+        }, { passive: true });
+
+        for (let i = 0; i < 16; i++) {
+            const optionL = document.createElement('option');
+            optionL.value = i;
+            optionL.textContent = `Channel ${i + 1}`;
+            leftSelect.appendChild(optionL);
+
+            const optionR = document.createElement('option');
+            optionR.value = i;
+            optionR.textContent = `Channel ${i + 1}`;
+            rightSelect.appendChild(optionR);
+
+            if (metersContainer) {
+                const meter = document.createElement('div');
+                meter.className = 'channel-meter';
+
+                const bar = document.createElement('div');
+                bar.className = 'channel-meter-bar';
+                const fill = document.createElement('div');
+                fill.className = 'channel-meter-fill';
+                fill.id = `channel-meter-${i}`;
+                bar.appendChild(fill);
+
+                const label = document.createElement('div');
+                label.className = 'channel-meter-number';
+                label.textContent = i + 1;
+
+                meter.appendChild(bar);
+                meter.appendChild(label);
+                metersContainer.appendChild(meter);
+                channelMeterFills[i] = fill;
+            }
+        }
+
+        const applySettings = (settings) => {
+            if (!settings) return;
+            if (Number.isInteger(settings.leftAudioChannel)) {
+                leftSelect.value = String(settings.leftAudioChannel);
+            }
+            if (Number.isInteger(settings.rightAudioChannel)) {
+                rightSelect.value = String(settings.rightAudioChannel);
+            }
+        };
+
+        fetch('/api/settings')
+            .then(res => res.ok ? res.json() : Promise.reject(new Error(res.statusText)))
+            .then(applySettings)
+            .catch(err => console.warn('채널 설정 불러오기 실패:', err));
+
+        saveBtn.addEventListener('click', () => {
+            const payload = {
+                leftChannel: leftSelect.value,
+                rightChannel: rightSelect.value
+            };
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(res => res.json())
+                .then(() => {
+                    alert('채널 설정을 저장하고 캡처를 재시작했습니다.');
+                    hidePanel();
+                })
+                .catch(err => {
+                    console.error('채널 설정 저장 실패:', err);
+                    alert('채널 설정 저장에 실패했습니다.');
+                });
+        });
+    }
+
+    function updateChannelMeters(allLevels) {
+        if (!Array.isArray(allLevels) || channelMeterFills.length === 0) return;
+        allLevels.forEach((db, idx) => {
+            const fill = channelMeterFills[idx];
+            if (!fill) return;
+            const pct = clamp(((db - MIN_DB) / (MAX_DB - MIN_DB)) * 100, 0, 100);
+            fill.style.height = `${pct}%`;
+            if (db > -6) fill.style.backgroundColor = '#e74c3c';
+            else if (db > -12) fill.style.backgroundColor = '#f1c40f';
+            else fill.style.backgroundColor = '#27ae60';
+        });
     }
 
     function setupFullscreenToggle() {
@@ -1273,6 +1408,9 @@
         const right = Number.isFinite(data.right) ? data.right : MIN_DB;
         animationState.meters.left.latestValue = left;
         animationState.meters.right.latestValue = right;
+        if (Array.isArray(data.all)) {
+            updateChannelMeters(data.all);
+        }
     }
 
     function updateLkfsState(key, value) {
