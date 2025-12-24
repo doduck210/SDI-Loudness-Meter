@@ -169,6 +169,14 @@ function startCapture() {
 app.use(express.json());
 app.use(express.static(WEB_ROOT));
 
+app.get(['/audio', '/audio.html'], (_req, res) => {
+    res.sendFile(path.join(WEB_ROOT, 'audio.html'));
+});
+
+app.get(['/video', '/video.html'], (_req, res) => {
+    res.sendFile(path.join(WEB_ROOT, 'video.html'));
+});
+
 app.get('/api/settings', (req, res) => {
     res.json(channelSettings);
 });
