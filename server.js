@@ -2,7 +2,6 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
-const sharp = require('sharp');
 const express = require('express');
 const { spawn, fork } = require('child_process');
 const { randomUUID } = require("crypto");
@@ -19,7 +18,7 @@ const peers = new Map();
 // --- Existing Data Structures ---
 let isIntegrating = false;
 let captureProcess = null;
-let latestVectorscopeFrame = null;
+let latestVectorscopeSamples = null;
 
 // Default settings
 let channelSettings = {
@@ -65,7 +64,7 @@ function detachPeer(ws, reason) {
     console.log(`[LEAVE] room=${room} role=${role} id=${id}${reason ? ` reason=${reason}` : ''}`);
 
     if (!hasAudioSubscribers()) {
-        latestVectorscopeFrame = null;
+        latestVectorscopeSamples = null;
     }
 }
 
@@ -76,29 +75,29 @@ function terminatePeer(ws, reason) {
     }
 }
 
-function sendVectorscopeFrameToClient(ws, frameBuffer) {
-    if (!frameBuffer) return;
+function sendVectorscopeSamplesToClient(ws, msgStr) {
+    if (!msgStr) return;
     if (ws.readyState !== WebSocket.OPEN) return;
     const meta = peers.get(ws);
     if (!meta || meta.role !== 'sub' || meta.page !== 'audio') return;
-    if (ws.bufferedAmount > 2 * 1024 * 1024) {
-        return; // Drop frames if client is backlogged.
+    if (ws.bufferedAmount > 512 * 1024) {
+        return; // Drop if the client is lagging to avoid buildup.
     }
-    ws.send(frameBuffer, { binary: true }, err => {
+    ws.send(msgStr, err => {
         if (err) {
-            console.error('Failed to send vectorscope frame to client:', err);
+            console.error('Failed to send vectorscope samples to client:', err);
             terminatePeer(ws, `send_error:${err.code || err.message}`);
         }
     });
 }
 
-function broadcastVectorscopeFrame(frameBuffer) {
+function broadcastVectorscopeSamples(msgStr) {
     if (!hasAudioSubscribers()) {
-        latestVectorscopeFrame = null;
+        latestVectorscopeSamples = null;
         return;
     }
-    latestVectorscopeFrame = frameBuffer;
-    wss.clients.forEach(ws => sendVectorscopeFrameToClient(ws, frameBuffer));
+    latestVectorscopeSamples = msgStr;
+    wss.clients.forEach(ws => sendVectorscopeSamplesToClient(ws, msgStr));
 }
 
 // --- System Stats (offloaded to worker) ---
@@ -205,8 +204,8 @@ wss.on('connection', (ws, req) => {
     (role === "pub" ? R.pubs : R.subs).add(ws);
     console.log(`[JOIN] room=${room} role=${role} id=${id} page=${page}`);
 
-    if (role === 'sub' && page === 'audio' && latestVectorscopeFrame) {
-        setImmediate(() => sendVectorscopeFrameToClient(ws, latestVectorscopeFrame));
+    if (role === 'sub' && page === 'audio' && latestVectorscopeSamples) {
+        setImmediate(() => sendVectorscopeSamplesToClient(ws, latestVectorscopeSamples));
     }
 
     // If a new subscriber joins, ask the publisher to send an offer.
@@ -272,22 +271,9 @@ wss.on('connection', (ws, req) => {
                     client.send(integrationStateMsg);
                 }
             });
-        } else if (msg.type === 'vectorscope' && msg.data) {
-            if (!hasAudioSubscribers()) {
-                latestVectorscopeFrame = null;
-                return;
-            }
-            const { width, height, data } = msg;
-            if (!width || !height || !data) return;
-            const rawFrame = Buffer.from(data, 'base64');
-
-            sharp(rawFrame, { raw: { width, height, channels: 3 } })
-                .jpeg()
-                .toBuffer()
-                .then(broadcastVectorscopeFrame)
-                .catch(err => {
-                    console.error('Failed to convert vectorscope frame:', err);
-                });
+        } else if (msg.type === 'vectorscope_samples' && Array.isArray(msg.samples)) {
+            const msgStr = JSON.stringify({ type: 'vectorscope_samples', samples: msg.samples });
+            broadcastVectorscopeSamples(msgStr);
         } else {
             // Broadcast audio telemetry only to audio clients
             const audioTelemetryTypes = ['lkfs', 's_lkfs', 'i_lkfs', 'levels', 'correlation', 'eq', 'lra'];

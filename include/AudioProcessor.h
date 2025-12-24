@@ -7,7 +7,6 @@
 #include <deque>
 #include "DeckLinkAPI.h"
 #include "Config.h"
-#include "avectorscope_processor.h"
 #include "eq_processor.h"
 #include "correlator_processor.h"
 
@@ -23,7 +22,6 @@ private:
     BMDConfig m_config;
     std::function<void(const std::string&)> m_send_ws_message;
 
-    AVectorscopeProcessor m_avectorscopeProcessor;
     EQProcessor m_eqProcessor;
     CorrelatorProcessor m_correlatorProcessor;
 
@@ -40,6 +38,10 @@ private:
     static const int kWindowSizeInSamples = kAudioSampleRate * 400 / 1000;
     static const int kShortTermWindowSizeInSamples = kAudioSampleRate * 3;
     static const int kSlideSizeInSamples = kAudioSampleRate * 100 / 1000;
+    static const size_t kMaxVectorscopeSamples = 512;
+
+    void sendVectorscopeSamples(const std::vector<double>& leftSamples,
+                                const std::vector<double>& rightSamples);
 };
 
 #endif // AUDIOPROCESSOR_H

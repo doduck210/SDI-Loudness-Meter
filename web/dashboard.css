@@ -533,7 +533,8 @@ body.fullscreen-mode .floating-fullscreen {
     border-radius: 6px;
 }
 
-.legacy-widget-body .vectorscope-container img {
+.legacy-widget-body .vectorscope-container img,
+.legacy-widget-body .vectorscope-container canvas {
     width: 100%;
     height: 100%;
     object-fit: cover;

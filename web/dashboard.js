@@ -539,26 +539,61 @@
                 root.innerHTML = `
                     <div class="widget-container">
                         <div class="vectorscope-container">
-                            <img alt="Vectorscope Stream">
+                            <canvas width="250" height="250"></canvas>
                         </div>
                     </div>
                 `;
-                const img = root.querySelector('img');
-                let objectUrl = null;
+                const canvas = root.querySelector('canvas');
+                const ctx = canvas.getContext('2d');
 
-                const unsubscribe = dataBus.subscribe('vectorscope_frame', blob => {
+                const resizeCanvas = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return;
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                };
+                resizeCanvas();
+                const resizeObserver = new ResizeObserver(resizeCanvas);
+                resizeObserver.observe(canvas);
+
+                const drawSamples = (samples) => {
+                    if (!Array.isArray(samples)) return;
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    const invSqrt2 = 1 / Math.sqrt(2);
+                    const amp = 3; // 시각 확장을 위한 스케일 팩터
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.fillStyle = '#0ff';
+                    for (const pair of samples) {
+                        if (!Array.isArray(pair) || pair.length < 2) continue;
+                        const x = Math.max(-1, Math.min(1, pair[0] * amp));
+                        const y = Math.max(-1, Math.min(1, pair[1] * amp));
+                        // 45도 회전: 모노 신호가 수직선 상에 보이도록
+                        const rx = (x - y) * invSqrt2;
+                        const ry = (x + y) * invSqrt2;
+                        const px = w / 2 + rx * (w / 2 - 1);
+                        const py = h / 2 - ry * (h / 2 - 1);
+                        ctx.fillRect(px, py, 1, 1);
+                    }
+                };
+
+                const drawBlob = (blob) => {
                     if (!blob) return;
-                    if (objectUrl) URL.revokeObjectURL(objectUrl);
-                    objectUrl = URL.createObjectURL(blob);
-                    img.src = objectUrl;
-                });
+                    createImageBitmap(blob).then(bitmap => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        bitmap.close?.();
+                    }).catch(() => {});
+                };
+
+                const unsubscribeSamples = dataBus.subscribe('vectorscope_samples', drawSamples);
+                const unsubscribeFrame = dataBus.subscribe('vectorscope_frame', drawBlob);
 
                 return () => {
-                    unsubscribe();
-                    if (objectUrl) {
-                        URL.revokeObjectURL(objectUrl);
-                        objectUrl = null;
-                    }
+                    unsubscribeSamples();
+                    unsubscribeFrame();
+                    resizeObserver.disconnect();
                 };
             }
         },
@@ -1164,6 +1199,9 @@
             switch (data.type) {
                 case 'levels':
                     updateLevelState(data);
+                    break;
+                case 'vectorscope_samples':
+                    dataBus.publish('vectorscope_samples', data.samples);
                     break;
                 case 'system_stats':
                     dataBus.publish('system_stats', data);

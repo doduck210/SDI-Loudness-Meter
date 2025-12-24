@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numeric>
 #include <iostream>
+#include <algorithm>
 
 AudioProcessor::AudioProcessor() : m_isIntegrating(false) {
 }
@@ -12,10 +13,6 @@ bool AudioProcessor::initialize(const BMDConfig& config, std::function<void(cons
     m_config = config;
     m_send_ws_message = send_ws_message;
 
-    if (!m_avectorscopeProcessor.initialize()) {
-        fprintf(stderr, "Failed to initialize vectorscope processor\n");
-        return false;
-    }
     m_eqProcessor.initialize();
     return true;
 }
@@ -110,12 +107,6 @@ void AudioProcessor::processAudioPacket(IDeckLinkAudioInputPacket* audioFrame) {
     oss_levels << "]}";
     m_send_ws_message(oss_levels.str());
 
-    if (sampleFrameCount > 0) {
-        std::vector<float> leftChunk(m_leftChannelPcm.end() - sampleFrameCount, m_leftChannelPcm.end());
-        std::vector<float> rightChunk(m_rightChannelPcm.end() - sampleFrameCount, m_rightChannelPcm.end());
-        m_avectorscopeProcessor.processAudio(leftChunk, rightChunk, sampleFrameCount, m_send_ws_message);
-    }
-
     while (m_leftChannelPcm.size() >= kWindowSizeInSamples) {
         std::vector<double> leftWindow(m_leftChannelPcm.begin(), m_leftChannelPcm.begin() + kWindowSizeInSamples);
         std::vector<double> rightWindow(m_rightChannelPcm.begin(), m_rightChannelPcm.begin() + kWindowSizeInSamples);
@@ -162,6 +153,8 @@ void AudioProcessor::processAudioPacket(IDeckLinkAudioInputPacket* audioFrame) {
     }
 
     if (sampleFrameCount > 0) {
+        sendVectorscopeSamples(current_left_samples, current_right_samples);
+
         // Calculate and send correlation
         std::vector<float> left_float(current_left_samples.begin(), current_left_samples.end());
         std::vector<float> right_float(current_right_samples.begin(), current_right_samples.end());
@@ -173,4 +166,27 @@ void AudioProcessor::processAudioPacket(IDeckLinkAudioInputPacket* audioFrame) {
         m_eqProcessor.processAudio(current_left_samples.data(), current_right_samples.data(), sampleFrameCount,
             m_send_ws_message);
     }
+}
+
+void AudioProcessor::sendVectorscopeSamples(const std::vector<double>& leftSamples,
+                                            const std::vector<double>& rightSamples) {
+    if (leftSamples.empty() || rightSamples.empty()) return;
+    const size_t count = std::min(leftSamples.size(), rightSamples.size());
+    if (count == 0) return;
+
+    const size_t stride = std::max<size_t>(1, count / kMaxVectorscopeSamples);
+    std::ostringstream oss;
+    oss << "{\"type\": \"vectorscope_samples\", \"samples\": [";
+    bool first = true;
+    for (size_t i = 0; i < count; i += stride) {
+        const double x = std::clamp(leftSamples[i], -1.0, 1.0);
+        const double y = std::clamp(rightSamples[i], -1.0, 1.0);
+        if (!first) {
+            oss << ",";
+        }
+        first = false;
+        oss << "[" << x << "," << y << "]";
+    }
+    oss << "]}";
+    m_send_ws_message(oss.str());
 }
