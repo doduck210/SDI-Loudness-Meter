@@ -562,10 +562,17 @@
                     const h = canvas.height;
                     const invSqrt2 = 1 / Math.sqrt(2);
                     const amp = 3; // 시각 확장을 위한 스케일 팩터
-                    const dotSize = 2;
-                    ctx.fillStyle = '#000';
+                    const dotSize = 1;
+                    // 가벼운 잔상 효과로 부드럽게 표현
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
                     ctx.fillRect(0, 0, w, h);
                     ctx.fillStyle = '#0ff';
+                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                    ctx.lineWidth = 1.5;
+                    let hasPath = false;
+                    ctx.beginPath();
+                    let prevPx = null;
+                    let prevPy = null;
                     for (const pair of samples) {
                         if (!Array.isArray(pair) || pair.length < 2) continue;
                         const x = Math.max(-1, Math.min(1, pair[0] * amp));
@@ -576,6 +583,16 @@
                         const px = w / 2 + rx * (w / 2 - 1);
                         const py = h / 2 - ry * (h / 2 - 1);
                         ctx.fillRect(px, py, dotSize, dotSize);
+                        if (prevPx !== null) {
+                            ctx.moveTo(prevPx, prevPy);
+                            ctx.lineTo(px, py);
+                            hasPath = true;
+                        }
+                        prevPx = px;
+                        prevPy = py;
+                    }
+                    if (hasPath) {
+                        ctx.stroke();
                     }
                 };
 
