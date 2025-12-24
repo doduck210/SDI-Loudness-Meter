@@ -562,6 +562,7 @@
                     const h = canvas.height;
                     const invSqrt2 = 1 / Math.sqrt(2);
                     const amp = 3; // 시각 확장을 위한 스케일 팩터
+                    const dotSize = 2;
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, w, h);
                     ctx.fillStyle = '#0ff';
@@ -574,7 +575,7 @@
                         const ry = (x + y) * invSqrt2;
                         const px = w / 2 + rx * (w / 2 - 1);
                         const py = h / 2 - ry * (h / 2 - 1);
-                        ctx.fillRect(px, py, 1, 1);
+                        ctx.fillRect(px, py, dotSize, dotSize);
                     }
                 };
 

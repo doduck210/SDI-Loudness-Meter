@@ -721,6 +721,7 @@
             vectorscopeCtx.fillStyle = '#000';
             vectorscopeCtx.fillRect(0, 0, w, h);
             vectorscopeCtx.fillStyle = '#0ff';
+            const dotSize = 2;
             for (const pair of samples) {
                 if (!Array.isArray(pair) || pair.length < 2) continue;
                 const x = Math.max(-1, Math.min(1, pair[0] * amp));
@@ -730,7 +731,7 @@
                 const ry = (x + y) * invSqrt2;
                 const px = w / 2 + rx * (w / 2 - 1);
                 const py = h / 2 - ry * (h / 2 - 1);
-                vectorscopeCtx.fillRect(px, py, 1, 1);
+                vectorscopeCtx.fillRect(px, py, dotSize, dotSize);
             }
         }
 
