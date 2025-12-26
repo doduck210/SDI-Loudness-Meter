@@ -721,8 +721,10 @@
             // 가벼운 잔상 효과로 부드럽게 표현
             vectorscopeCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             vectorscopeCtx.fillRect(0, 0, w, h);
-            vectorscopeCtx.fillStyle = '#0ff';
-            vectorscopeCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+            // 누적될 때만 밝아지도록 낮은 알파 + 라이트닝 합성 사용
+            vectorscopeCtx.globalCompositeOperation = 'lighter';
+            vectorscopeCtx.fillStyle = 'rgba(0, 255, 255, 0.08)';
+            vectorscopeCtx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
             vectorscopeCtx.lineWidth = 1.5;
             const dotSize = 2;
             let hasPath = false;
@@ -750,6 +752,7 @@
             if (hasPath) {
                 vectorscopeCtx.stroke();
             }
+            vectorscopeCtx.globalCompositeOperation = 'source-over';
         }
 
         const ws = new WebSocket(`ws://${window.location.host}/?role=sub&page=audio`);

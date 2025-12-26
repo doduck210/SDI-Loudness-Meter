@@ -174,11 +174,10 @@ void AudioProcessor::sendVectorscopeSamples(const std::vector<double>& leftSampl
     const size_t count = std::min(leftSamples.size(), rightSamples.size());
     if (count == 0) return;
 
-    const size_t stride = std::max<size_t>(1, count / kMaxVectorscopeSamples);
     std::ostringstream oss;
     oss << "{\"type\": \"vectorscope_samples\", \"samples\": [";
     bool first = true;
-    for (size_t i = 0; i < count; i += stride) {
+    for (size_t i = 0; i < count; ++i) {
         const double x = std::clamp(leftSamples[i], -1.0, 1.0);
         const double y = std::clamp(rightSamples[i], -1.0, 1.0);
         if (!first) {

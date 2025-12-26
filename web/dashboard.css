@@ -67,6 +67,10 @@ header {
     align-items: center;
 }
 
+.channel-settings + .channel-settings {
+    margin-left: 12px;
+}
+
 #channelSettingsToggle {
     background: rgba(63, 169, 245, 0.16);
     border: 1px solid rgba(63, 169, 245, 0.4);
@@ -84,6 +88,26 @@ header {
 #channelSettingsToggle:hover {
     background: rgba(63, 169, 245, 0.26);
     border-color: rgba(63, 169, 245, 0.7);
+    transform: translateY(-1px);
+}
+
+#widgetSettingsToggle {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+}
+
+#widgetSettingsToggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
     transform: translateY(-1px);
 }
 
@@ -111,6 +135,37 @@ header {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.widget-settings-nav {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.widget-settings-tab {
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.widget-settings-tab.active {
+    border-color: rgba(69, 247, 170, 0.6);
+    background: rgba(69, 247, 170, 0.12);
+}
+
+.widget-settings-section {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.widget-settings-section.active {
+    display: flex;
 }
 
 .channel-meter-label {

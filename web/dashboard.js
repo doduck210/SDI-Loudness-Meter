@@ -1,5 +1,6 @@
 (function () {
     const STORAGE_KEY = 'sdilm.dashboard.layout.v1';
+    const SETTINGS_KEY = 'sdilm.dashboard.settings.v1';
     const DEFAULT_LAYOUT = [
         { id: 'levels', x: 0, y: 0, w: 3, h: 4 },
         { id: 'lkfsDisplay', x: 3, y: 0, w: 2, h: 3 },
@@ -27,6 +28,13 @@
     const PEAK_HOLD_DURATION = 3;
 
     const socketController = { ws: null };
+    const defaultVectorscopeSettings = {
+        dotSize: 1,
+        fadeAlpha: 0.15,
+        amp: 3,
+        color: '#45f7aa'
+    };
+    let vectorscopeSettings = { ...defaultVectorscopeSettings };
 
     class DataBus {
         constructor() {
@@ -61,6 +69,7 @@
     }
 
     const dataBus = new DataBus();
+    dataBus.publish('vectorscope_settings', vectorscopeSettings);
 
     const animationState = {
         meters: {
@@ -99,6 +108,23 @@
         correlator: null
     };
     const channelMeterFills = [];
+
+    const hexToRgb = (hex) => {
+        if (!hex || typeof hex !== 'string') return { r: 0, g: 255, b: 255 };
+        const cleaned = hex.replace('#', '');
+        if (cleaned.length !== 6) return { r: 0, g: 255, b: 255 };
+        const num = parseInt(cleaned, 16);
+        return {
+            r: (num >> 16) & 255,
+            g: (num >> 8) & 255,
+            b: num & 255
+        };
+    };
+
+    const invertFadeValue = (val, min = 0.05, max = 0.3) => {
+        const v = isNaN(val) ? min : val;
+        return min + max - v;
+    };
 
     const videoStreamManager = (() => {
         const consumers = {
@@ -557,18 +583,26 @@
                 const resizeObserver = new ResizeObserver(resizeCanvas);
                 resizeObserver.observe(canvas);
 
+                let localSettings = { ...vectorscopeSettings };
+                dataBus.subscribe('vectorscope_settings', (s) => {
+                    if (!s) return;
+                    localSettings = { ...localSettings, ...s };
+                });
+
                 const drawSamples = (samples) => {
                     if (!Array.isArray(samples)) return;
                     const w = canvas.width;
                     const h = canvas.height;
                     const invSqrt2 = 1 / Math.sqrt(2);
-                    const amp = 3; // 시각 확장을 위한 스케일 팩터
-                    const dotSize = 1;
+                    const { dotSize = 1, fadeAlpha = 0.15, amp = 3, color = '#00ffff' } = localSettings;
+                    const { r, g, b } = hexToRgb(color);
                     // 가벼운 잔상 효과로 부드럽게 표현
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+                    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
                     ctx.fillRect(0, 0, w, h);
-                    ctx.fillStyle = '#0ff';
-                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                    // 누적되며 밝아지도록 낮은 알파 + lighter 합성
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.08)`;
+                    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.15)`;
                     ctx.lineWidth = 1.5;
                     let hasPath = false;
                     ctx.beginPath();
@@ -595,6 +629,7 @@
                     if (hasPath) {
                         ctx.stroke();
                     }
+                    ctx.globalCompositeOperation = 'source-over';
                 };
 
                 const drawBlob = (blob) => {
@@ -843,6 +878,7 @@
 
         setupControlToggle();
         setupChannelSettingsPanel();
+        setupWidgetSettingsPanel();
         setupFullscreenToggle();
         setupControls();
         setupLayoutTransfer();
@@ -1004,6 +1040,100 @@
                     console.error('채널 설정 저장 실패:', err);
                     alert('채널 설정 저장에 실패했습니다.');
                 });
+        });
+    }
+
+    function setupWidgetSettingsPanel() {
+        const toggleBtn = document.getElementById('widgetSettingsToggle');
+        const panel = document.getElementById('widgetSettingsPanel');
+        const dotInput = document.getElementById('vsDotSize');
+        const fadeInput = document.getElementById('vsFadeAlpha');
+        const ampInput = document.getElementById('vsAmp');
+        const colorInput = document.getElementById('vsColor');
+        const dotValue = document.getElementById('vsDotSizeValue');
+        const fadeValue = document.getElementById('vsFadeAlphaValue');
+        const ampValue = document.getElementById('vsAmpValue');
+        const colorValue = document.getElementById('vsColorValue');
+        const tabButtons = panel?.querySelectorAll('.widget-settings-tab');
+        const sections = panel?.querySelectorAll('.widget-settings-section');
+        if (!toggleBtn || !panel || !dotInput || !fadeInput || !ampInput || !colorInput) return;
+
+        const syncPanelValues = () => {
+                dotInput.value = String(vectorscopeSettings.dotSize);
+                fadeInput.value = String(invertFadeValue(vectorscopeSettings.fadeAlpha));
+                ampInput.value = String(vectorscopeSettings.amp);
+                colorInput.value = vectorscopeSettings.color;
+            if (dotValue) dotValue.textContent = vectorscopeSettings.dotSize.toFixed(1);
+            if (fadeValue) fadeValue.textContent = vectorscopeSettings.fadeAlpha.toFixed(2);
+            if (ampValue) ampValue.textContent = vectorscopeSettings.amp.toFixed(1);
+            if (colorValue) colorValue.textContent = vectorscopeSettings.color;
+        };
+        syncPanelValues();
+
+        const hidePanel = () => {
+            panel.classList.remove('open');
+            panel.setAttribute('aria-hidden', 'true');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        };
+
+        const showPanel = () => {
+            const rect = toggleBtn.getBoundingClientRect();
+            panel.style.top = `${rect.bottom + 8}px`;
+            panel.style.right = `${window.innerWidth - rect.right}px`;
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+            activateTab('widgetSettingsVectorscope');
+        };
+
+        toggleBtn.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            if (panel.classList.contains('open')) hidePanel();
+            else showPanel();
+        });
+
+        panel.addEventListener('click', (evt) => evt.stopPropagation());
+        document.addEventListener('click', (evt) => {
+            if (!panel.classList.contains('open')) return;
+            if (panel.contains(evt.target) || evt.target === toggleBtn) return;
+            hidePanel();
+        });
+
+        const activateTab = (targetId) => {
+            if (!sections || !tabButtons) return;
+            sections.forEach(sec => sec.classList.toggle('active', sec.id === targetId));
+            tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.target === targetId));
+        };
+        tabButtons?.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.dataset.target;
+                activateTab(targetId);
+            });
+        });
+
+        const updateAndPublish = () => {
+            vectorscopeSettings = {
+                dotSize: Math.max(0.5, Math.min(4, parseFloat(dotInput.value) || 1)),
+                fadeAlpha: Math.max(0.01, invertFadeValue(parseFloat(fadeInput.value) || 0.15)),
+                amp: Math.max(1, parseFloat(ampInput.value) || 3),
+                color: colorInput.value || '#00ffff'
+            };
+            if (dotValue) dotValue.textContent = vectorscopeSettings.dotSize.toFixed(1);
+            if (fadeValue) fadeValue.textContent = vectorscopeSettings.fadeAlpha.toFixed(2);
+            if (ampValue) ampValue.textContent = vectorscopeSettings.amp.toFixed(1);
+            if (colorValue) colorValue.textContent = vectorscopeSettings.color;
+            dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+        };
+
+        [dotInput, fadeInput, ampInput, colorInput].forEach(input => {
+            input.addEventListener('input', updateAndPublish);
+            input.addEventListener('change', updateAndPublish);
+        });
+
+        dataBus.subscribe('vectorscope_settings', (s) => {
+            if (!s) return;
+            vectorscopeSettings = { ...vectorscopeSettings, ...s };
+            syncPanelValues();
         });
     }
 
@@ -1209,6 +1339,7 @@
     function saveLayout() {
         const layout = getCurrentLayout();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vectorscope: vectorscopeSettings }));
     }
 
     function getCurrentLayout() {
@@ -1239,6 +1370,15 @@
         } catch (err) {
             console.warn('Failed to apply saved layout, using defaults.', err);
             applyLayout(DEFAULT_LAYOUT);
+        }
+        try {
+            const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+            if (savedSettings && savedSettings.vectorscope) {
+                vectorscopeSettings = { ...vectorscopeSettings, ...savedSettings.vectorscope };
+                dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+            }
+        } catch (err) {
+            console.warn('Failed to load saved settings.', err);
         }
     }
 
