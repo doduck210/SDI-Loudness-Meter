@@ -218,6 +218,12 @@ header {
     color: var(--text-muted);
 }
 
+.channel-signal-info {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
 .channel-settings-row label {
     font-size: 0.85rem;
     color: var(--text-muted);

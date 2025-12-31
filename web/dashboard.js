@@ -356,6 +356,15 @@
         return Math.min(max, Math.max(min, value));
     }
 
+    function formatVideoInfo(video) {
+        if (!video) return '-';
+        const name = video.name || 'Unknown';
+        const pix = video.pixel_format || '';
+        if (pix) return `${name} | ${pix}`;
+        const resolution = (video.width && video.height) ? `${video.width}x${video.height}` : '';
+        return [name, resolution].filter(Boolean).join(' | ') || '-';
+    }
+
     function dbToPercentage(db) {
         if (!Number.isFinite(db)) return 0;
         return clamp((db - MIN_DB) / (MAX_DB - MIN_DB), 0, 1);
@@ -676,7 +685,7 @@
                 const cpuEl = root.querySelector('[data-role="cpu"]');
                 const memEl = root.querySelector('[data-role="mem"]');
 
-                const unsubscribe = dataBus.subscribe('system_stats', stats => {
+                const unsubscribeStats = dataBus.subscribe('system_stats', stats => {
                     if (!stats) return;
                     cpuEl.textContent = `${stats.cpu.toFixed(1)}%`;
                     const used = stats.memory.used / (1024 ** 3);
@@ -684,7 +693,9 @@
                     memEl.innerHTML = `${stats.memory.percent.toFixed(1)}%<br><small>(${used.toFixed(2)}/${total.toFixed(2)} GB)</small>`;
                 });
 
-                return () => unsubscribe();
+                return () => {
+                    unsubscribeStats();
+                };
             }
         },
         correlation: {
@@ -930,6 +941,7 @@
         const rightSelect = document.getElementById('channelSettingRight');
         const saveBtn = document.getElementById('channelSettingsSave');
         const metersContainer = document.getElementById('channelSettingsMeters');
+        const videoInfoLabel = document.getElementById('channelVideoInfo');
         if (!toggleBtn || !panel || !leftSelect || !rightSelect || !saveBtn) return;
 
         const hidePanel = () => {
@@ -1020,6 +1032,11 @@
             .then(res => res.ok ? res.json() : Promise.reject(new Error(res.statusText)))
             .then(applySettings)
             .catch(err => console.warn('채널 설정 불러오기 실패:', err));
+
+        dataBus.subscribe('signal_info', info => {
+            if (!info || !videoInfoLabel) return;
+            videoInfoLabel.textContent = formatVideoInfo(info.video);
+        });
 
         saveBtn.addEventListener('click', () => {
             const payload = {
@@ -1510,6 +1527,9 @@
                     break;
                 case 'system_stats':
                     dataBus.publish('system_stats', data);
+                    break;
+                case 'signal_info':
+                    dataBus.publish('signal_info', data);
                     break;
                 case 'integration_state':
                     dataBus.publish('integration_state', data);

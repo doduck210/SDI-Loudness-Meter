@@ -447,6 +447,13 @@
             text-align: right;
         }
 
+        .signal-info-note {
+            font-size: 0.9em;
+            color: #bdc3c7;
+            line-height: 1.4;
+            margin-top: 6px;
+        }
+
         /* Tab Styles */
         .tab-nav {
             display: flex;
@@ -515,22 +522,25 @@
 </head>
 
 <body>
-    <div class="settings-menu">
-        <button id="settings-toggle">⚙️</button>
-        <div id="settings-content" class="settings-content">
-            <h3>Channel Settings</h3>
-            <div id="all-channel-meters"></div>
-            <div class="channel-selector">
-                <label for="left-channel">Left Channel:</label>
-                <select id="left-channel"></select>
+        <div class="settings-menu">
+            <button id="settings-toggle">⚙️</button>
+            <div id="settings-content" class="settings-content">
+                <h3>Channel Settings</h3>
+                <div id="all-channel-meters"></div>
+                <div class="channel-selector">
+                    <label for="left-channel">Left Channel:</label>
+                    <select id="left-channel"></select>
+                </div>
+                <div class="channel-selector">
+                    <label for="right-channel">Right Channel:</label>
+                    <select id="right-channel"></select>
+                </div>
+                <button id="save-settings">Save & Restart</button>
+                <div class="signal-info-note">
+                    Current video format: <span id="video-info">-</span>
+                </div>
             </div>
-            <div class="channel-selector">
-                <label for="right-channel">Right Channel:</label>
-                <select id="right-channel"></select>
-            </div>
-            <button id="save-settings">Save & Restart</button>
         </div>
-    </div>
 
     <div class="main-container">
         <h1><span style="position:relative;"><span
@@ -700,6 +710,7 @@
         const statusContent = document.getElementById('status-content');
         const cpuUsageSpan = document.getElementById('cpu-usage');
         const memUsageSpan = document.getElementById('mem-usage');
+        const videoInfoSpan = document.getElementById('video-info');
         const lkfsMeterScale = document.getElementById('lkfsMeterScale');
         const momentaryBar = document.getElementById('momentaryBar');
         const shortTermBar = document.getElementById('shortTermBar');
@@ -755,6 +766,16 @@
             vectorscopeCtx.globalCompositeOperation = 'source-over';
         }
 
+        function formatVideoInfo(video) {
+            if (!video) return '-';
+            const name = video.name || 'Unknown';
+            const pix = video.pixel_format || '';
+            if (pix) return `${name} | ${pix}`;
+            // Fallback if pixel format missing
+            const resolution = (video.width && video.height) ? `${video.width}x${video.height}` : '';
+            return [name, resolution].filter(Boolean).join(' | ') || '-';
+        }
+
         const ws = new WebSocket(`ws://${window.location.host}/?role=sub&page=audio`);
         ws.binaryType = 'blob';
 
@@ -788,6 +809,10 @@
                     const memTotalGb = data.memory.total / (1024 ** 3);
                     memUsageSpan.innerHTML =
                         `${data.memory.percent.toFixed(1)}%<br><small>(${memUsedGb.toFixed(2)}/${memTotalGb.toFixed(2)} GB)</small>`;
+                }
+
+                if (data.type === 'signal_info') {
+                    if (videoInfoSpan) videoInfoSpan.textContent = formatVideoInfo(data.video);
                 }
 
                 if (data.type === 'integration_state') {

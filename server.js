@@ -19,6 +19,7 @@ const peers = new Map();
 let isIntegrating = false;
 let captureProcess = null;
 let latestVectorscopeSamples = null;
+let latestSignalInfo = null;
 
 // Default settings
 let channelSettings = {
@@ -226,6 +227,9 @@ wss.on('connection', (ws, req) => {
     // --- Existing Functionality ---
     ws.send(JSON.stringify({ type: 'integration_state', is_integrating: isIntegrating }));
     ws.send(JSON.stringify({ type: 'settings', ...channelSettings }));
+    if (latestSignalInfo) {
+        ws.send(latestSignalInfo);
+    }
 
     ws.on('message', message => {
         let msg;
@@ -282,6 +286,14 @@ wss.on('connection', (ws, req) => {
         } else if (msg.type === 'vectorscope_samples' && Array.isArray(msg.samples)) {
             const msgStr = JSON.stringify({ type: 'vectorscope_samples', samples: msg.samples });
             broadcastVectorscopeSamples(msgStr);
+        } else if (msg.type === 'signal_info') {
+            const msgStr = JSON.stringify(msg);
+            latestSignalInfo = msgStr;
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(msgStr);
+                }
+            });
         } else {
             // Broadcast audio telemetry only to audio clients
             const audioTelemetryTypes = ['lkfs', 's_lkfs', 'i_lkfs', 'levels', 'correlation', 'eq', 'lra'];

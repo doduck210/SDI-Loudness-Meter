@@ -76,6 +76,8 @@ static std::string g_ws_uri = "ws://127.0.0.1:8080";
 static bool g_ws_started = false;
 static bool		 g_do_exit = false;
 
+static void send_ws_message(const std::string& msg);
+
 // Processors
 static AudioProcessor g_audioProcessor;
 #ifdef ENABLE_VIDEO_PROCESSING
@@ -86,6 +88,26 @@ static pthread_mutex_t	 g_sleepMutex;
 static pthread_cond_t	 g_sleepCond;
 static BMDConfig		 g_config;
 static IDeckLinkInput*		 g_deckLinkInput = NULL;
+
+static void publishSignalInfo(IDeckLinkDisplayMode* mode, BMDPixelFormat pixelFormat)
+{
+    if (!mode)
+        return;
+
+    char* displayModeName = NULL;
+    mode->GetName((const char**)&displayModeName);
+
+    std::ostringstream oss;
+    oss << "{\"type\":\"signal_info\",\"video\":{";
+    oss << "\"name\":\"" << (displayModeName ? displayModeName : "Unknown") << "\",";
+    oss << "\"pixel_format\":\"" << g_config.GetPixelFormatName(pixelFormat) << "\"}";
+    oss << "}";
+
+    send_ws_message(oss.str());
+
+    if (displayModeName)
+        free(displayModeName);
+}
 
 void* ws_thread_func(void* /*arg*/) {
     try {
@@ -214,10 +236,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFormatChanged(BMDVideoInputFormatChan
 				goto bail;
 			}
 
-			g_deckLinkInput->StartStreams();
-		}
-		m_pixelFormat = pixelFormat;
-	}
+            g_deckLinkInput->StartStreams();
+            publishSignalInfo(mode, pixelFormat);
+        }
+        m_pixelFormat = pixelFormat;
+    }
 
 bail:
 	return S_OK;
@@ -327,6 +350,7 @@ int main(int argc, char *argv[])
         result = g_deckLinkInput->StartStreams();
         if (result != S_OK) { fprintf(stderr, "Failed to start streams.\n"); goto bail; }
 
+        publishSignalInfo(displayMode, g_config.m_pixelFormat);
         fprintf(stderr, "Capture started. Press Ctrl+C to stop.\n");
         exitStatus = 0;
 

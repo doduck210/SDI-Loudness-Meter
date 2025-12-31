@@ -73,11 +73,11 @@ public:
 	IDeckLink* GetSelectedDeckLink(void);
 	IDeckLinkDisplayMode* GetSelectedDeckLinkDisplayMode(IDeckLink* deckLink);
 
+	static const char* GetPixelFormatName(BMDPixelFormat pixelFormat);
+
 private:
 	char*					m_deckLinkName;
 	char*					m_displayModeName;
-
-	static const char* GetPixelFormatName(BMDPixelFormat pixelFormat);
 };
 
 #endif
