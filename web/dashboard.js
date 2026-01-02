@@ -1441,19 +1441,20 @@
         if (!exportBtn || !importBtn || !importInput) return;
 
         const downloadLayoutFile = () => {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const userName = prompt('레이아웃 파일 이름을 입력하세요 (확장자 제외)', `sdilm-layout-${timestamp}`);
+            if (userName === null) return; // 취소 시 저장 중단
+            const safeName = (userName || '')
+                .trim()
+                .replace(/[\\/:*?"<>|]+/g, '')
+                .replace(/\s+/g, '_')
+                || `sdilm-layout-${timestamp}`;
             const payload = {
                 layout: getCurrentLayout(),
                 settings: { vectorscope: vectorscopeSettings }
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const userName = prompt('레이아웃 파일 이름을 입력하세요 (확장자 제외)', `sdilm-layout-${timestamp}`) || '';
-            const safeName = userName
-                .trim()
-                .replace(/[\\/:*?"<>|]+/g, '')
-                .replace(/\s+/g, '_')
-                || `sdilm-layout-${timestamp}`;
             const a = document.createElement('a');
             a.href = url;
             a.download = `${safeName}.json`;
