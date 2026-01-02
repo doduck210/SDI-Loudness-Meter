@@ -505,6 +505,13 @@ body.fullscreen-mode .floating-fullscreen {
     position: relative;
 }
 
+.grid-stack-item,
+.grid-stack-item-content,
+.legacy-widget-shell,
+.legacy-widget-body {
+    touch-action: none;
+}
+
 .grid-stack .ui-resizable-handle {
     touch-action: none;
 }
