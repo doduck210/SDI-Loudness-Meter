@@ -1140,6 +1140,7 @@
             if (ampValue) ampValue.textContent = vectorscopeSettings.amp.toFixed(1);
             if (colorValue) colorValue.textContent = vectorscopeSettings.color;
             dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+            saveSettings();
         };
 
         [dotInput, fadeInput, ampInput, colorInput].forEach(input => {
@@ -1353,10 +1354,14 @@
         emptyState.hidden = widgetInstances.size > 0;
     }
 
+    function saveSettings() {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vectorscope: vectorscopeSettings }));
+    }
+
     function saveLayout() {
         const layout = getCurrentLayout();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vectorscope: vectorscopeSettings }));
+        saveSettings();
     }
 
     function getCurrentLayout() {
@@ -1375,6 +1380,15 @@
     }
 
     function loadLayout() {
+        try {
+            const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+            if (savedSettings && savedSettings.vectorscope) {
+                vectorscopeSettings = { ...vectorscopeSettings, ...savedSettings.vectorscope };
+                dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+            }
+        } catch (err) {
+            console.warn('Failed to load saved settings.', err);
+        }
         let saved = [];
         try {
             saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -1387,15 +1401,6 @@
         } catch (err) {
             console.warn('Failed to apply saved layout, using defaults.', err);
             applyLayout(DEFAULT_LAYOUT);
-        }
-        try {
-            const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-            if (savedSettings && savedSettings.vectorscope) {
-                vectorscopeSettings = { ...vectorscopeSettings, ...savedSettings.vectorscope };
-                dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
-            }
-        } catch (err) {
-            console.warn('Failed to load saved settings.', err);
         }
     }
 
@@ -1436,8 +1441,11 @@
         if (!exportBtn || !importBtn || !importInput) return;
 
         const downloadLayoutFile = () => {
-            const layout = getCurrentLayout();
-            const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
+            const payload = {
+                layout: getCurrentLayout(),
+                settings: { vectorscope: vectorscopeSettings }
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const userName = prompt('레이아웃 파일 이름을 입력하세요 (확장자 제외)', `sdilm-layout-${timestamp}`) || '';
@@ -1475,7 +1483,14 @@
             reader.onload = () => {
                 try {
                     const parsed = JSON.parse(reader.result);
-                    applyLayout(parsed);
+                    const layout = Array.isArray(parsed) ? parsed : parsed?.layout;
+                    const importedVectorscope = parsed?.settings?.vectorscope;
+                    applyLayout(layout);
+                    if (importedVectorscope) {
+                        vectorscopeSettings = { ...vectorscopeSettings, ...importedVectorscope };
+                        dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+                        saveLayout();
+                    }
                     alert('레이아웃을 성공적으로 불러왔습니다.');
                 } catch (err) {
                     console.error('레이아웃 불러오기 실패', err);
