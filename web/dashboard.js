@@ -619,8 +619,9 @@
                     let prevPy = null;
                     for (const pair of samples) {
                         if (!Array.isArray(pair) || pair.length < 2) continue;
-                        const x = Math.max(-1, Math.min(1, pair[0] * amp));
-                        const y = Math.max(-1, Math.min(1, pair[1] * amp));
+                        // Swap L/R so screen left/right matches expected stereo orientation.
+                        const x = Math.max(-1, Math.min(1, pair[1] * amp));
+                        const y = Math.max(-1, Math.min(1, pair[0] * amp));
                         // 45도 회전: 모노 신호가 수직선 상에 보이도록
                         const rx = (x - y) * invSqrt2;
                         const ry = (x + y) * invSqrt2;
