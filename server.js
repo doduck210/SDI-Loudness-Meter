@@ -102,7 +102,7 @@ function broadcastVectorscopeSamples(msgStr) {
 }
 
 // --- System Stats (offloaded to worker) ---
-const statsWorker = fork(path.join(__dirname, 'statsWorker.js'));
+const statsWorker = fork(path.join(__dirname, 'web', 'statsWorker.js'));
 
 statsWorker.on('message', (msg) => {
     if (!msg || msg.type !== 'system_stats') return;
