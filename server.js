@@ -178,9 +178,6 @@ app.get(['/video', '/video.html'], (_req, res) => {
     res.sendFile(path.join(WEB_ROOT, 'video.html'));
 });
 
-app.get(['/input-config', '/input-config.html'], (_req, res) => {
-    res.sendFile(path.join(WEB_ROOT, 'input-config.html'));
-});
 
 app.get('/api/settings', (req, res) => {
     res.json(channelSettings);

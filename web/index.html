@@ -24,6 +24,31 @@
         </div>
         <div class="header-actions">
             <div class="channel-settings">
+                <button type="button" id="inputConfigToggle" aria-expanded="false"
+                    aria-controls="inputConfigPanel">🎚️ 입력</button>
+                <div id="inputConfigPanel" class="channel-settings-panel" aria-hidden="true">
+                    <div class="channel-settings-row">
+                        <label for="inputConfigDevice">Device</label>
+                        <select id="inputConfigDevice"></select>
+                    </div>
+                    <div class="channel-settings-row">
+                        <label for="inputConfigVideo">Video Input</label>
+                        <select id="inputConfigVideo"></select>
+                    </div>
+                    <div class="channel-settings-row">
+                        <label for="inputConfigAudio">Audio Input</label>
+                        <select id="inputConfigAudio"></select>
+                    </div>
+                    <div class="input-config-actions">
+                        <button type="button" id="inputConfigApply">적용</button>
+                        <button type="button" id="inputConfigRefresh" class="ghost">목록 새로고침</button>
+                    </div>
+                    <div class="channel-settings-row">
+                        <span id="inputConfigStatus" style="color: var(--text-muted);">대기 중</span>
+                    </div>
+                </div>
+            </div>
+            <div class="channel-settings">
                 <button type="button" id="channelSettingsToggle" aria-expanded="false"
                     aria-controls="channelSettingsPanel">⚙️ 채널</button>
                 <div id="channelSettingsPanel" class="channel-settings-panel" aria-hidden="true">
@@ -45,9 +70,6 @@
                         <span id="channelVideoInfo" style="color: var(--text);">-</span>
                     </div>
                 </div>
-            </div>
-            <div class="channel-settings">
-                <a id="inputConfigLink" href="/input-config">🎚️ 입력 설정</a>
             </div>
             <div class="channel-settings">
                 <button type="button" id="widgetSettingsToggle" aria-expanded="false"

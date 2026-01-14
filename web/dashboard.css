@@ -71,9 +71,9 @@ header {
     margin-left: 12px;
 }
 
-#channelSettingsToggle {
-    background: rgba(63, 169, 245, 0.16);
-    border: 1px solid rgba(63, 169, 245, 0.4);
+.header-actions .channel-settings button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     color: var(--text);
     border-radius: 12px;
     padding: 8px 12px;
@@ -85,51 +85,22 @@ header {
     transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
 }
 
-#channelSettingsToggle:hover {
-    background: rgba(63, 169, 245, 0.26);
-    border-color: rgba(63, 169, 245, 0.7);
+.header-actions .channel-settings button:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.4);
     transform: translateY(-1px);
 }
 
-#widgetSettingsToggle {
-    background: rgba(255, 255, 255, 0.06);
+.input-config-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.input-config-actions .ghost {
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: var(--text);
-    border-radius: 12px;
-    padding: 8px 12px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
-}
-
-#widgetSettingsToggle:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.35);
-    transform: translateY(-1px);
-}
-
-#inputConfigLink {
-    background: rgba(255, 204, 102, 0.18);
-    border: 1px solid rgba(255, 204, 102, 0.5);
-    color: var(--text);
-    border-radius: 12px;
-    padding: 8px 12px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    text-decoration: none;
-    transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
-}
-
-#inputConfigLink:hover {
-    background: rgba(255, 204, 102, 0.3);
-    border-color: rgba(255, 204, 102, 0.8);
-    transform: translateY(-1px);
 }
 
 .channel-settings-panel {
