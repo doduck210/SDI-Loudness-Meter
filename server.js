@@ -178,22 +178,174 @@ app.get(['/video', '/video.html'], (_req, res) => {
     res.sendFile(path.join(WEB_ROOT, 'video.html'));
 });
 
+app.get(['/input-config', '/input-config.html'], (_req, res) => {
+    res.sendFile(path.join(WEB_ROOT, 'input-config.html'));
+});
+
 app.get('/api/settings', (req, res) => {
     res.json(channelSettings);
 });
 
 app.post('/api/settings', (req, res) => {
-    const { leftChannel, rightChannel } = req.body;
+    const { leftChannel, rightChannel, device, mode } = req.body;
+    let shouldRestart = false;
+
     if (leftChannel !== undefined && rightChannel !== undefined) {
         channelSettings.leftAudioChannel = parseInt(leftChannel, 10);
         channelSettings.rightAudioChannel = parseInt(rightChannel, 10);
-        console.log('Updated channel settings:', channelSettings);
-        
-        startCapture(); // Restart capture process with new settings
+        shouldRestart = true;
+    }
 
-        res.json({ success: true, message: 'Settings updated and Capture process restarted.' });
-    } else {
+    if (device !== undefined) {
+        channelSettings.device = parseInt(device, 10);
+        shouldRestart = true;
+    }
+
+    if (mode !== undefined) {
+        channelSettings.mode = parseInt(mode, 10);
+        shouldRestart = true;
+    }
+
+    if (!shouldRestart) {
         res.status(400).json({ success: false, message: 'Invalid settings provided.' });
+        return;
+    }
+
+    console.log('Updated channel settings:', channelSettings);
+    startCapture(); // Restart capture process with new settings
+    res.json({ success: true, message: 'Settings updated and Capture process restarted.' });
+});
+
+const DEVICE_CONFIGURE_PATH = path.join(__dirname, 'tools', 'deviceconfigure', 'DeviceConfigure');
+
+function runDeviceConfigure(args, options = {}) {
+    const { allowNonZero = false } = options;
+    return new Promise((resolve, reject) => {
+        const proc = spawn(DEVICE_CONFIGURE_PATH, args);
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+
+        proc.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        proc.on('error', (err) => {
+            reject(err);
+        });
+
+        proc.on('close', (code) => {
+            if (code !== 0 && !allowNonZero) {
+                reject(new Error(`DeviceConfigure exited with code ${code}: ${stderr}`));
+                return;
+            }
+            resolve({ stdout, stderr, code });
+        });
+    });
+}
+
+function parseDeviceList(output) {
+    const lines = output.split(/\r?\n/);
+    const devices = [];
+    let inDeviceList = false;
+
+    for (const line of lines) {
+        if (line.includes('-d <device id>:')) {
+            inDeviceList = true;
+            continue;
+        }
+        if (inDeviceList) {
+            if (line.trim().startsWith('-') || line.includes('Options:')) {
+                break;
+            }
+            const match = line.match(/^\s[* ]?\s*(\d+):\s+(.*)$/);
+            if (match) {
+                devices.push({ id: Number(match[1]), name: match[2].trim() });
+            }
+        }
+    }
+    return devices;
+}
+
+function parseConnectorOptions(lines, startLabel) {
+    const options = [];
+    let inSection = false;
+
+    for (const line of lines) {
+        if (line.includes(startLabel)) {
+            inSection = true;
+            continue;
+        }
+        if (inSection && line.trim().startsWith('-')) {
+            break;
+        }
+        if (!inSection) continue;
+        const match = line.match(/^\s*([* ])\s*(\d+):\s+(.*)$/);
+        if (match) {
+            options.push({
+                id: Number(match[2]),
+                label: match[3].trim(),
+                selected: match[1] === '*'
+            });
+        }
+    }
+
+    return options;
+}
+
+app.get('/api/input-config/devices', async (_req, res) => {
+    try {
+        const { stdout, stderr } = await runDeviceConfigure(['-h'], { allowNonZero: true });
+        const output = `${stdout}\n${stderr}`;
+        res.json({ devices: parseDeviceList(output) });
+    } catch (err) {
+        console.error('Failed to load DeviceConfigure devices:', err);
+        res.status(500).json({ success: false, message: 'Failed to load devices.' });
+    }
+});
+
+app.get('/api/input-config/options', async (req, res) => {
+    const device = req.query.device;
+    if (device === undefined) {
+        res.status(400).json({ success: false, message: 'Missing device.' });
+        return;
+    }
+    try {
+        const { stdout, stderr } = await runDeviceConfigure(['-d', String(device), '-h'], { allowNonZero: true });
+        const output = `${stdout}\n${stderr}`;
+        const lines = output.split(/\r?\n/);
+        const videoInputs = parseConnectorOptions(lines, '-v <video input connector id>');
+        const audioInputs = parseConnectorOptions(lines, '-a <audio input connector id>');
+        res.json({ videoInputs, audioInputs });
+    } catch (err) {
+        console.error('Failed to load DeviceConfigure options:', err);
+        res.status(500).json({ success: false, message: 'Failed to load options.' });
+    }
+});
+
+app.post('/api/input-config/apply', async (req, res) => {
+    const { device, videoInputId, audioInputId } = req.body;
+    if (device === undefined) {
+        res.status(400).json({ success: false, message: 'Missing device.' });
+        return;
+    }
+    const args = ['-d', String(device)];
+    if (videoInputId !== undefined && videoInputId !== null && videoInputId !== '') {
+        args.push('-v', String(videoInputId));
+    }
+    if (audioInputId !== undefined && audioInputId !== null && audioInputId !== '') {
+        args.push('-a', String(audioInputId));
+    }
+
+    try {
+        await runDeviceConfigure(args);
+        res.json({ success: true, message: 'Device configuration updated.' });
+    } catch (err) {
+        console.error('Failed to apply DeviceConfigure settings:', err);
+        res.status(500).json({ success: false, message: 'Failed to apply configuration.' });
     }
 });
 

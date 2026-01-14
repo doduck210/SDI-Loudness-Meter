@@ -111,6 +111,27 @@ header {
     transform: translateY(-1px);
 }
 
+#inputConfigLink {
+    background: rgba(255, 204, 102, 0.18);
+    border: 1px solid rgba(255, 204, 102, 0.5);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+}
+
+#inputConfigLink:hover {
+    background: rgba(255, 204, 102, 0.3);
+    border-color: rgba(255, 204, 102, 0.8);
+    transform: translateY(-1px);
+}
+
 .channel-settings-panel {
     position: fixed;
     top: 88px;
