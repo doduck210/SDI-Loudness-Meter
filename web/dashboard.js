@@ -943,10 +943,12 @@
         const panel = document.getElementById('channelSettingsPanel');
         const leftSelect = document.getElementById('channelSettingLeft');
         const rightSelect = document.getElementById('channelSettingRight');
+        const deviceSelect = document.getElementById('channelSettingDevice');
         const saveBtn = document.getElementById('channelSettingsSave');
         const metersContainer = document.getElementById('channelSettingsMeters');
         const videoInfoLabel = document.getElementById('channelVideoInfo');
-        if (!toggleBtn || !panel || !leftSelect || !rightSelect || !saveBtn) return;
+        if (!toggleBtn || !panel || !leftSelect || !rightSelect || !deviceSelect || !saveBtn) return;
+        let currentSettings = {};
 
         const hidePanel = () => {
             panel.classList.remove('open');
@@ -961,6 +963,8 @@
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             toggleBtn.setAttribute('aria-expanded', 'true');
+            loadSettings();
+            loadDeviceOptions();
         };
 
         const togglePanel = () => {
@@ -1024,18 +1028,55 @@
 
         const applySettings = (settings) => {
             if (!settings) return;
+            currentSettings = { ...currentSettings, ...settings };
             if (Number.isInteger(settings.leftAudioChannel)) {
                 leftSelect.value = String(settings.leftAudioChannel);
             }
             if (Number.isInteger(settings.rightAudioChannel)) {
                 rightSelect.value = String(settings.rightAudioChannel);
             }
+            if (Number.isInteger(settings.device)) {
+                deviceSelect.value = String(settings.device);
+            }
         };
 
-        fetch('/api/settings')
-            .then(res => res.ok ? res.json() : Promise.reject(new Error(res.statusText)))
-            .then(applySettings)
-            .catch(err => console.warn('채널 설정 불러오기 실패:', err));
+        const loadSettings = () => {
+            return fetch('/api/settings')
+                .then(res => res.ok ? res.json() : Promise.reject(new Error(res.statusText)))
+                .then(applySettings)
+                .catch(err => console.warn('채널 설정 불러오기 실패:', err));
+        };
+
+        loadSettings();
+
+        const loadDeviceOptions = async () => {
+            try {
+                const res = await fetch('/api/input-config/devices');
+                if (!res.ok) throw new Error(res.statusText);
+                const data = await res.json();
+                deviceSelect.innerHTML = '';
+                if (!data.devices || data.devices.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = '디바이스 없음';
+                    deviceSelect.appendChild(option);
+                    deviceSelect.disabled = true;
+                    return;
+                }
+                data.devices.forEach((device) => {
+                    const option = document.createElement('option');
+                    option.value = String(device.id);
+                    option.textContent = `${device.id}: ${device.name}`;
+                    deviceSelect.appendChild(option);
+                });
+                deviceSelect.disabled = false;
+                if (Number.isInteger(currentSettings.device)) {
+                    deviceSelect.value = String(currentSettings.device);
+                }
+            } catch (err) {
+                console.warn('디바이스 목록 불러오기 실패:', err);
+            }
+        };
 
         dataBus.subscribe('signal_info', info => {
             if (!info || !videoInfoLabel) return;
@@ -1045,7 +1086,8 @@
         saveBtn.addEventListener('click', () => {
             const payload = {
                 leftChannel: leftSelect.value,
-                rightChannel: rightSelect.value
+                rightChannel: rightSelect.value,
+                device: deviceSelect.value
             };
             fetch('/api/settings', {
                 method: 'POST',
@@ -1074,6 +1116,7 @@
         const refreshBtn = document.getElementById('inputConfigRefresh');
         const statusLabel = document.getElementById('inputConfigStatus');
         if (!toggleBtn || !panel || !deviceSelect || !videoSelect || !audioSelect || !applyBtn || !refreshBtn || !statusLabel) return;
+        let currentSettings = {};
 
         const setStatus = (text, isError = false) => {
             statusLabel.textContent = text;
@@ -1093,6 +1136,7 @@
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             toggleBtn.setAttribute('aria-expanded', 'true');
+            loadSettings();
             loadDevices();
         };
 
@@ -1175,11 +1219,24 @@
                     deviceSelect.appendChild(option);
                 });
                 deviceSelect.disabled = false;
+                if (Number.isInteger(currentSettings.device)) {
+                    deviceSelect.value = String(currentSettings.device);
+                }
                 setStatus('디바이스 로드 완료');
                 await loadOptions(deviceSelect.value);
             } catch (err) {
                 console.error(err);
                 setStatus('디바이스 로드 실패', true);
+            }
+        };
+
+        const loadSettings = async () => {
+            try {
+                const res = await fetch('/api/settings');
+                if (!res.ok) throw new Error(res.statusText);
+                currentSettings = await res.json();
+            } catch (err) {
+                console.warn('입력 설정에 필요한 상태 불러오기 실패:', err);
             }
         };
 
