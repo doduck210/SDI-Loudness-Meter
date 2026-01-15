@@ -517,7 +517,7 @@
             title: 'LKFS Bar',
             description: 'Momentary / Short / Integrated bars',
             defaultSize: { w: 2, h: 4 },
-            minW: 2,
+            minW: 1,
             minH: 3,
             mount(root) {
                 root.innerHTML = `
@@ -705,6 +705,7 @@
             defaultSize: { w: 2, h: 1 },
             minW: 2,
             minH: 1,
+            maxH: 1,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container">
@@ -768,9 +769,10 @@
         lra: {
             title: 'LRA',
             description: 'Loudness range',
-            defaultSize: { w: 2, h: 2 },
+            defaultSize: { w: 2, h: 1 },
             minW: 2,
             minH: 1,
+            maxH: 1,
             mount(root) {
                 root.innerHTML = `
                     <div class="widget-container lkfs-widget-container">
@@ -1466,7 +1468,9 @@
             w: layout.w ?? def.defaultSize.w,
             h: layout.h ?? def.defaultSize.h,
             minW: def.minW,
-            minH: def.minH
+            minH: def.minH,
+            maxW: def.maxW,
+            maxH: def.maxH
         });
 
         const destroy = def.mount(body, {
