@@ -34,7 +34,11 @@
         amp: 3,
         color: '#45f7aa'
     };
+    const defaultMultiPpmSettings = {
+        channels: Array.from({ length: 16 }, (_, idx) => idx)
+    };
     let vectorscopeSettings = { ...defaultVectorscopeSettings };
+    let multiPpmSettings = { ...defaultMultiPpmSettings };
 
     class DataBus {
         constructor() {
@@ -70,6 +74,7 @@
 
     const dataBus = new DataBus();
     dataBus.publish('vectorscope_settings', vectorscopeSettings);
+    dataBus.publish('multi_ppm_settings', multiPpmSettings);
 
     const animationState = {
         meters: {
@@ -85,6 +90,10 @@
                 peakHoldValue: MIN_DB,
                 peakHoldTimer: 0
             }
+        },
+        multiPpm: {
+            latestValues: Array.from({ length: 16 }, () => MIN_DB),
+            displayValues: Array.from({ length: 16 }, () => MIN_DB)
         },
         lkfs: {
             momentary: { latestValue: MIN_LKFS, displayValue: MIN_LKFS, label: '-inf' },
@@ -102,6 +111,7 @@
 
     const uiRefs = {
         meters: null,
+        multiPpm: null,
         lkfsDisplay: null,
         lkfsBars: null,
         eq: null,
@@ -124,6 +134,18 @@
     const invertFadeValue = (val, min = 0.05, max = 0.3) => {
         const v = isNaN(val) ? min : val;
         return min + max - v;
+    };
+
+    const normalizeMultiPpmSettings = (settings) => {
+        const next = { ...multiPpmSettings, ...settings };
+        if (!Array.isArray(next.channels)) {
+            next.channels = [...defaultMultiPpmSettings.channels];
+        } else {
+            next.channels = next.channels
+                .map(ch => Number(ch))
+                .filter(ch => Number.isInteger(ch) && ch >= 0 && ch < 16);
+        }
+        return next;
     };
 
     const videoStreamManager = (() => {
@@ -448,6 +470,78 @@
                 uiRefs.meters = refs;
                 return () => {
                     if (uiRefs.meters === refs) uiRefs.meters = null;
+                };
+            }
+        },
+        multiPpm: {
+            title: 'Multi-channel PPM',
+            description: 'Selected channel peak meters',
+            defaultSize: { w: 3, h: 3 },
+            minW: 2,
+            minH: 2,
+            mount(root) {
+                root.innerHTML = `
+                    <div class="widget-container multi-ppm-widget">
+                        <div class="level-meter-container multi-ppm-meter-container" data-role="multi-ppm-grid">
+                            <div class="scale-container multi-ppm-scale" data-role="multi-ppm-scale"></div>
+                        </div>
+                        <div class="multi-ppm-empty" data-role="multi-ppm-empty">표시할 채널을 선택하세요.</div>
+                    </div>
+                `;
+                const gridEl = root.querySelector('[data-role="multi-ppm-grid"]');
+                const emptyEl = root.querySelector('[data-role="multi-ppm-empty"]');
+                const scaleEl = root.querySelector('[data-role="multi-ppm-scale"]');
+                const meterFills = new Map();
+
+                const renderMeters = (channels) => {
+                    if (!gridEl) return;
+                    gridEl.innerHTML = '';
+                    if (scaleEl) gridEl.appendChild(scaleEl);
+                    meterFills.clear();
+                    const list = Array.isArray(channels) ? channels : [];
+                    if (list.length === 0) {
+                        gridEl.style.display = 'none';
+                        if (emptyEl) emptyEl.style.display = 'flex';
+                        return;
+                    }
+                    gridEl.style.display = 'flex';
+                    if (emptyEl) emptyEl.style.display = 'none';
+
+                    list.forEach(channelIdx => {
+                        const meter = document.createElement('div');
+                        meter.className = 'level-meter multi-ppm-meter';
+
+                        const fill = document.createElement('div');
+                        fill.className = 'meter-fill';
+                        meter.appendChild(fill);
+
+                        const label = document.createElement('div');
+                        label.className = 'meter-label multi-ppm-label';
+                        label.textContent = channelIdx + 1;
+
+                        meter.appendChild(label);
+                        gridEl.appendChild(meter);
+                        meterFills.set(channelIdx, fill);
+                    });
+                };
+
+                const unsubSettings = dataBus.subscribe('multi_ppm_settings', (settings) => {
+                    const channels = Array.isArray(settings?.channels) ? settings.channels : [];
+                    renderMeters(channels);
+                    updateMultiPpmMeters(0);
+                });
+
+                if (scaleEl) {
+                    createScale(scaleEl, LEVEL_SCALE_POINTS, dbToPercentage);
+                }
+                renderMeters(multiPpmSettings.channels);
+                uiRefs.multiPpm = { meterFills };
+
+                return () => {
+                    unsubSettings();
+                    if (uiRefs.multiPpm && uiRefs.multiPpm.meterFills === meterFills) {
+                        uiRefs.multiPpm = null;
+                    }
                 };
             }
         },
@@ -1283,9 +1377,13 @@
         const fadeValue = document.getElementById('vsFadeAlphaValue');
         const ampValue = document.getElementById('vsAmpValue');
         const colorValue = document.getElementById('vsColorValue');
+        const multiChannelList = document.getElementById('multiPpmChannelList');
+        const multiSelectAll = document.getElementById('multiPpmSelectAll');
+        const multiSelectNone = document.getElementById('multiPpmSelectNone');
         const tabButtons = panel?.querySelectorAll('.widget-settings-tab');
         const sections = panel?.querySelectorAll('.widget-settings-section');
         if (!toggleBtn || !panel || !dotInput || !fadeInput || !ampInput || !colorInput) return;
+        const multiPpmCheckboxes = [];
 
         const syncPanelValues = () => {
                 dotInput.value = String(vectorscopeSettings.dotSize);
@@ -1298,6 +1396,49 @@
             if (colorValue) colorValue.textContent = vectorscopeSettings.color;
         };
         syncPanelValues();
+
+        const updateMultiPpmSettings = () => {
+            if (multiPpmCheckboxes.length === 0) return;
+            const selected = multiPpmCheckboxes
+                .filter(cb => cb.checked)
+                .map(cb => Number(cb.value))
+                .sort((a, b) => a - b);
+            multiPpmSettings = normalizeMultiPpmSettings({ channels: selected });
+            dataBus.publish('multi_ppm_settings', { ...multiPpmSettings });
+            saveSettings();
+        };
+
+        const syncMultiPpmSelection = (channels) => {
+            if (multiPpmCheckboxes.length === 0) return;
+            const set = new Set(Array.isArray(channels) ? channels : []);
+            multiPpmCheckboxes.forEach(cb => {
+                cb.checked = set.has(Number(cb.value));
+            });
+        };
+
+        const buildMultiPpmCheckboxes = () => {
+            if (!multiChannelList || multiPpmCheckboxes.length > 0) return;
+            multiChannelList.innerHTML = '';
+            for (let i = 0; i < 16; i++) {
+                const label = document.createElement('label');
+                label.className = 'multi-ppm-channel-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = String(i);
+                checkbox.addEventListener('change', updateMultiPpmSettings);
+                multiPpmCheckboxes.push(checkbox);
+
+                const text = document.createElement('span');
+                text.textContent = `CH ${i + 1}`;
+
+                label.appendChild(checkbox);
+                label.appendChild(text);
+                multiChannelList.appendChild(label);
+            }
+            syncMultiPpmSelection(multiPpmSettings.channels);
+        };
+        buildMultiPpmCheckboxes();
 
         const hidePanel = () => {
             panel.classList.remove('open');
@@ -1364,6 +1505,30 @@
             if (!s) return;
             vectorscopeSettings = { ...vectorscopeSettings, ...s };
             syncPanelValues();
+        });
+
+        if (multiSelectAll) {
+            multiSelectAll.addEventListener('click', () => {
+                multiPpmCheckboxes.forEach(cb => {
+                    cb.checked = true;
+                });
+                updateMultiPpmSettings();
+            });
+        }
+
+        if (multiSelectNone) {
+            multiSelectNone.addEventListener('click', () => {
+                multiPpmCheckboxes.forEach(cb => {
+                    cb.checked = false;
+                });
+                updateMultiPpmSettings();
+            });
+        }
+
+        dataBus.subscribe('multi_ppm_settings', (s) => {
+            if (!s) return;
+            multiPpmSettings = normalizeMultiPpmSettings(s);
+            syncMultiPpmSelection(multiPpmSettings.channels);
         });
     }
 
@@ -1569,7 +1734,10 @@
     }
 
     function saveSettings() {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vectorscope: vectorscopeSettings }));
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            vectorscope: vectorscopeSettings,
+            multiPpm: multiPpmSettings
+        }));
     }
 
     function saveLayout() {
@@ -1599,6 +1767,10 @@
             if (savedSettings && savedSettings.vectorscope) {
                 vectorscopeSettings = { ...vectorscopeSettings, ...savedSettings.vectorscope };
                 dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+            }
+            if (savedSettings && savedSettings.multiPpm) {
+                multiPpmSettings = normalizeMultiPpmSettings(savedSettings.multiPpm);
+                dataBus.publish('multi_ppm_settings', { ...multiPpmSettings });
             }
         } catch (err) {
             console.warn('Failed to load saved settings.', err);
@@ -1665,7 +1837,7 @@
                 || `sdilm-layout-${timestamp}`;
             const payload = {
                 layout: getCurrentLayout(),
-                settings: { vectorscope: vectorscopeSettings }
+                settings: { vectorscope: vectorscopeSettings, multiPpm: multiPpmSettings }
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -1700,10 +1872,16 @@
                     const parsed = JSON.parse(reader.result);
                     const layout = Array.isArray(parsed) ? parsed : parsed?.layout;
                     const importedVectorscope = parsed?.settings?.vectorscope;
+                    const importedMultiPpm = parsed?.settings?.multiPpm;
                     applyLayout(layout);
                     if (importedVectorscope) {
                         vectorscopeSettings = { ...vectorscopeSettings, ...importedVectorscope };
                         dataBus.publish('vectorscope_settings', { ...vectorscopeSettings });
+                        saveLayout();
+                    }
+                    if (importedMultiPpm) {
+                        multiPpmSettings = normalizeMultiPpmSettings(importedMultiPpm);
+                        dataBus.publish('multi_ppm_settings', { ...multiPpmSettings });
                         saveLayout();
                     }
                     alert('레이아웃을 성공적으로 불러왔습니다.');
@@ -1812,6 +1990,11 @@
         animationState.meters.right.latestValue = right;
         if (Array.isArray(data.all)) {
             updateChannelMeters(data.all);
+            dataBus.publish('all_levels', data.all);
+            data.all.forEach((db, idx) => {
+                if (idx >= animationState.multiPpm.latestValues.length) return;
+                animationState.multiPpm.latestValues[idx] = Number.isFinite(db) ? db : MIN_DB;
+            });
         }
     }
 
@@ -1847,11 +2030,30 @@
         lastFrameTime = currentTime;
 
         updateMeters(deltaSeconds);
+        updateMultiPpmMeters(deltaSeconds);
         updateLkfs(deltaSeconds);
         updateEq(deltaSeconds);
         updateCorrelator(deltaSeconds);
 
         requestAnimationFrame(animationLoop);
+    }
+
+    function updateMultiPpmMeters(deltaSeconds) {
+        const refs = uiRefs.multiPpm;
+        if (!refs || !refs.meterFills) return;
+        const { latestValues, displayValues } = animationState.multiPpm;
+
+        refs.meterFills.forEach((fill, channelIdx) => {
+            const latest = Number.isFinite(latestValues[channelIdx]) ? latestValues[channelIdx] : MIN_DB;
+            const display = Number.isFinite(displayValues[channelIdx]) ? displayValues[channelIdx] : MIN_DB;
+            const next = latest > display
+                ? latest
+                : Math.max(display - FALL_RATE * deltaSeconds, MIN_DB);
+            displayValues[channelIdx] = next;
+            const pct = clamp(((next - MIN_DB) / (MAX_DB - MIN_DB)) * 100, 0, 100);
+            fill.style.height = `${pct}%`;
+            applyMeterColor(fill, next);
+        });
     }
 
     function updateMeters(deltaSeconds) {

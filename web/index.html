@@ -81,6 +81,7 @@
                 <div id="widgetSettingsPanel" class="channel-settings-panel" aria-hidden="true">
                     <div class="widget-settings-nav">
                         <button type="button" class="widget-settings-tab active" data-target="widgetSettingsVectorscope">Audio Vectorscope</button>
+                        <button type="button" class="widget-settings-tab" data-target="widgetSettingsMultiPpm">다중채널 PPM</button>
                         <!-- 앞으로 다른 위젯 추가 시 탭을 늘리면 됩니다 -->
                     </div>
                     <div id="widgetSettingsVectorscope" class="widget-settings-section">
@@ -99,6 +100,16 @@
                         <div class="channel-settings-row">
                             <label for="vsColor">색상 <span id="vsColorValue" style="color:#9fb4c7;">#45f7aa</span></label>
                             <input type="color" id="vsColor" value="#45f7aa">
+                        </div>
+                    </div>
+                    <div id="widgetSettingsMultiPpm" class="widget-settings-section">
+                        <div class="channel-settings-row">
+                            <span class="channel-meter-label">표시할 채널</span>
+                            <div class="multi-ppm-channel-actions">
+                                <button type="button" id="multiPpmSelectAll">전체</button>
+                                <button type="button" id="multiPpmSelectNone">해제</button>
+                            </div>
+                            <div class="multi-ppm-channel-grid" id="multiPpmChannelList"></div>
                         </div>
                     </div>
                 </div>

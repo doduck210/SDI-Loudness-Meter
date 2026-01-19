@@ -160,6 +160,40 @@ header {
     display: flex;
 }
 
+.multi-ppm-channel-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.multi-ppm-channel-actions button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.multi-ppm-channel-actions button:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.multi-ppm-channel-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.multi-ppm-channel-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
 .channel-meter-label {
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -305,6 +339,41 @@ main {
     pointer-events: none;
     transform: translateY(1px);
     transition: opacity 0.15s ease;
+}
+
+.multi-ppm-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 12px;
+}
+
+.legacy-widget-body .multi-ppm-meter-container {
+    gap: 4px;
+    padding-bottom: 36px;
+}
+
+.legacy-widget-body .multi-ppm-meter {
+    min-width: 18px;
+}
+
+.legacy-widget-body .multi-ppm-label {
+    font-size: 0.75rem;
+    bottom: -30px;
+}
+
+.legacy-widget-body .multi-ppm-scale {
+    width: 34px;
+}
+
+.multi-ppm-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-align: center;
 }
 
 .control-panel {
