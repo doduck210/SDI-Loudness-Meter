@@ -6,7 +6,8 @@
 
 // #include "Filter.h"
 
-extern "C" {
+extern "C"
+{
 #include <libavcodec/avcodec.h>
 }
 
@@ -18,34 +19,38 @@ extern "C" {
 
 using json = nlohmann::json;
 
-struct Sender {
+struct Sender
+{
 	std::shared_ptr<rtc::Track> track;
 	std::shared_ptr<rtc::RtpPacketizationConfig> rtp;
 	uint32_t ts90k = 0;
 	uint32_t rtp_tick = 3003;
 };
 
-struct Peer {
+struct Peer
+{
 	std::shared_ptr<rtc::PeerConnection> pc;
 	std::unordered_map<std::string, Sender> senders;
 	bool offerInFlight = false;
 };
 
-struct TrackTemplate {
+struct TrackTemplate
+{
 	std::string mid, stream, track;
 	uint32_t ssrc = 0;
 	uint32_t rtp_tick = 3003;
 	uint32_t clock = 90000;
-	uint8_t  payloadType = 96;
+	uint8_t payloadType = 96;
 };
-struct AnnexbFrame {
+struct AnnexbFrame
+{
 	std::vector<uint8_t> data;
 	bool isIDR = false;
 	bool hasSPS = false;
 	bool hasPPS = false;
 };
 
-static const char* nal_name(uint8_t t)
+static const char *nal_name(uint8_t t)
 {
 	switch (t)
 	{
@@ -66,17 +71,19 @@ static const char* nal_name(uint8_t t)
 	}
 }
 
-inline std::atomic<bool> offerInFlight{ false };
+inline std::atomic<bool> offerInFlight{false};
 
-inline std::atomic<bool> started{ false };
+inline std::atomic<bool> started{false};
 
-class WebRTC {
+class WebRTC
+{
 public:
-	bool RegisterH264Track(const std::string& mid, const 
-std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t rtp_tick = 3003) {
-		//std::lock_guard<std::mutex> lk(mx_);
+	bool RegisterH264Track(const std::string &mid, const std::string &msid_stream, const std::string &msid_track, uint32_t ssrc, uint32_t rtp_tick = 3003)
+	{
+		// std::lock_guard<std::mutex> lk(mx_);
 
-		if (trackTemplates_.count(mid)) {
+		if (trackTemplates_.count(mid))
+		{
 			return false;
 		}
 
@@ -90,13 +97,17 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 		t.rtp_tick = rtp_tick;
 		trackTemplates_.emplace(mid, std::move(t));
 
-		for (auto& [viewerId, P] : peers_) {
-			if (!P.senders.count(mid)) {
+		for (auto &[viewerId, P] : peers_)
+		{
+			if (!P.senders.count(mid))
+			{
 				AddVideoSenderToPeerUnlocked(P, trackTemplates_.at(mid));
 			}
 
-			if (P.pc && P.pc->state() == rtc::PeerConnection::State::Connected) {
-				if (!P.offerInFlight) {
+			if (P.pc && P.pc->state() == rtc::PeerConnection::State::Connected)
+			{
+				if (!P.offerInFlight)
+				{
 					P.offerInFlight = true;
 					P.pc->setLocalDescription(rtc::Description::Type::Offer);
 				}
@@ -105,14 +116,18 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 		return true;
 	}
 
-	bool UnregisterTrack(const std::string& mid) {
-		//std::lock_guard<std::mutex> lk(mx_);
-		if (!trackTemplates_.erase(mid)) {
+	bool UnregisterTrack(const std::string &mid)
+	{
+		// std::lock_guard<std::mutex> lk(mx_);
+		if (!trackTemplates_.erase(mid))
+		{
 			return false;
 		}
 
-		for (auto& [viewerId, P] : peers_) {
-			if (auto it = P.senders.find(mid);it != P.senders.end()) {
+		for (auto &[viewerId, P] : peers_)
+		{
+			if (auto it = P.senders.find(mid); it != P.senders.end())
+			{
 				if (it->second.track)
 				{
 					it->second.track->close();
@@ -123,19 +138,20 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 		return true;
 	}
 
-	WebRTC(const std::string& name) {
+	WebRTC(const std::string &name)
+	{
 		cfg_.iceServers.clear();
 		cfg_.enableIceTcp = false;
 		cfg_.enableIceUdpMux = true;
 
-		//pc_ = std::make_shared<rtc::PeerConnection>(cfg_);
+		// pc_ = std::make_shared<rtc::PeerConnection>(cfg_);
 
 		const std::string ws_url = "ws://127.0.0.1:8080/?role=pub";
 
 		ws_ = std::make_shared<rtc::WebSocket>();
 
 		ws_->onMessage([&](rtc::message_variant data)
-			{
+					   {
 				auto handle_json = [&](const std::string& msg) {
 					auto j = json::parse(msg, nullptr, false);
 					if (j.is_discarded()) {
@@ -191,74 +207,69 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 					const char* p = reinterpret_cast<const char*>(pb->data());
 					std::string msg(p, pb->size());
 					handle_json(msg);
-				}
-			});
+				} });
 
-				ws_->onOpen([&]()
-					{
-						std::cout << "Opened.\n";
-					});
-				ws_->open(ws_url);
+		ws_->onOpen([&]()
+					{ std::cout << "Opened.\n"; });
+		ws_->open(ws_url);
 	};
 
-	void SendEncoded(const std::string& mid, const AVPacket* pkt)
+	void SendEncoded(const std::string &mid, const AVPacket *pkt)
 	{
-		AnnexbFrame  anxb = PrepareAnnexBwithSpsPps(pkt->data, pkt->size);
-
-		//std::lock_guard<std::mutex> lk(mx_);
-
-		for (auto& [viewerId, P] : peers_) {
+		for (auto &[viewerId, P] : peers_)
+		{
 			auto it = P.senders.find(mid);
-			if (it == P.senders.end()) {
+			if (it == P.senders.end())
 				continue;
-			}
-			auto& s = it->second;
-			if (!s.track || !s.track->isOpen()) {
+			auto &s = it->second;
+			if (!s.track || !s.track->isOpen())
 				continue;
-			}
 
 			rtc::FrameInfo fi(s.ts90k);
-			fi.payloadType = 96;
+			fi.payloadType = s.rtp->payloadType;
 
 			s.rtp->timestamp = s.ts90k;
 			s.ts90k += s.rtp_tick;
 
-			const std::byte* buf = reinterpret_cast<const std::byte*>(anxb.data.data());
-			s.track->sendFrame(buf, anxb.data.size(), fi);
+			const std::byte *buf = reinterpret_cast<const std::byte *>(pkt->data);
+			s.track->sendFrame(buf, pkt->size, fi);
 		}
 	}
 
-	void EnsurePeer(const std::string& viewerId) {
-		//std::lock_guard<std::mutex> lk(mx_);
+	void EnsurePeer(const std::string &viewerId)
+	{
+		// std::lock_guard<std::mutex> lk(mx_);
 
-		if (peers_.count(viewerId)) {
+		if (peers_.count(viewerId))
+		{
 			return;
 		}
 
 		Peer P;
 		P.pc = std::make_shared<rtc::PeerConnection>(cfg_);
 
-		P.pc->onLocalDescription([&, viewerId](rtc::Description d) {
+		P.pc->onLocalDescription([&, viewerId](rtc::Description d)
+								 {
 			std::string s = std::string(d);
-			ws_->send(json{ { "type",d.typeString() }, { "sdp",s }, { "to",viewerId } }.dump());
-			});
+			ws_->send(json{ { "type",d.typeString() }, { "sdp",s }, { "to",viewerId } }.dump()); });
 
-		P.pc->onLocalCandidate([&, viewerId](rtc::Candidate c) {
+		P.pc->onLocalCandidate([&, viewerId](rtc::Candidate c)
+							   {
 			std::string cand = std::string(c);
 			if (cand.rfind("a=", 0) == 0) {
 				cand.erase(0, 2);
 			}
 			ws_->send(json{ {
-					"type","candidate"},{"candidate",cand},{"mid",c.mid()},{"to",viewerId} }.dump());
-			});
+					"type","candidate"},{"candidate",cand},{"mid",c.mid()},{"to",viewerId} }.dump()); });
 
-		P.pc->onSignalingStateChange([&, viewerId](rtc::PeerConnection::SignalingState s) {
+		P.pc->onSignalingStateChange([&, viewerId](rtc::PeerConnection::SignalingState s)
+									 {
 			if (s == rtc::PeerConnection::SignalingState::Stable) {
 				peers_[viewerId].offerInFlight = false;
-			}
-			});
+			} });
 
-		for (auto& [mid, tmpl] : trackTemplates_) {
+		for (auto &[mid, tmpl] : trackTemplates_)
+		{
 			AddVideoSenderToPeerUnlocked(P, tmpl);
 		}
 
@@ -268,12 +279,15 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 		peers_[viewerId].pc->setLocalDescription(rtc::Description::Type::Offer);
 	}
 
-	void AddVideoSenderToPeerUnlocked(Peer& P, const TrackTemplate& T) {
-		if (!P.pc) {
+	void AddVideoSenderToPeerUnlocked(Peer &P, const TrackTemplate &T)
+	{
+		if (!P.pc)
+		{
 			return;
 		}
 
-		if (P.senders.count(T.mid)) {
+		if (P.senders.count(T.mid))
+		{
 			return;
 		}
 
@@ -286,7 +300,7 @@ std::string& msid_stream, const std::string& msid_track, uint32_t ssrc, uint32_t
 
 		auto rtp = std::make_shared<rtc::RtpPacketizationConfig>(T.ssrc, T.track, T.payloadType, T.clock);
 		auto h264 = std::make_shared<rtc::H264RtpPacketizer>(
-			rtc::H264RtpPacketizer::Separator::LongStartSequence, rtp);
+			rtc::H264RtpPacketizer::Separator::StartSequence, rtp);
 		h264->addToChain(std::make_shared<rtc::RtcpSrReporter>(rtp));
 		h264->addToChain(std::make_shared<rtc::RtcpNackResponder>());
 		track->setMediaHandler(h264);
@@ -307,7 +321,7 @@ private:
 
 	std::unordered_map<std::string, TrackTemplate> trackTemplates_;
 
-	//std::mutex mx_;
+	// std::mutex mx_;
 
 	rtc::Configuration cfg_;
 
@@ -319,55 +333,93 @@ private:
 	uint32_t ts90k = 0;
 	uint64_t frames = 0;
 
-	static void SplitAnnexB(const uint8_t* in, size_t n,
-		std::vector<std::pair<const uint8_t*, size_t>>& out) {
-		auto sc = [&](size_t i)->int {
-			if (i + 3 <= n && in[i] == 0 && in[i + 1] == 0 && in[i + 2] == 1) return 3;
-			if (i + 4 <= n && in[i] == 0 && in[i + 1] == 0 && in[i + 2] == 0 && in[i + 3] == 1) return 4;
+	static void SplitAnnexB(const uint8_t *in, size_t n,
+							std::vector<std::pair<const uint8_t *, size_t>> &out)
+	{
+		auto sc = [&](size_t i) -> int
+		{
+			if (i + 3 <= n && in[i] == 0 && in[i + 1] == 0 && in[i + 2] == 1)
+				return 3;
+			if (i + 4 <= n && in[i] == 0 && in[i + 1] == 0 && in[i + 2] == 0 && in[i + 3] == 1)
+				return 4;
 			return 0;
-			};
+		};
 		size_t i = 0;
-		while (i + 3 < n) {
+		while (i + 3 < n)
+		{
 			int k = sc(i);
-			if (!k) { ++i; continue; }
+			if (!k)
+			{
+				++i;
+				continue;
+			}
 			size_t nal_start = i + k;
 			size_t j = nal_start;
-			while (j + 3 < n && sc(j) == 0) ++j;
+			while (j + 3 < n && sc(j) == 0)
+				++j;
 			size_t nal_size = j - nal_start;
-			if (nal_size > 0) out.emplace_back(in + nal_start, nal_size);
+			if (nal_size > 0)
+				out.emplace_back(in + nal_start, nal_size);
 			i = j;
 		}
 	}
 
-	static AnnexbFrame PrepareAnnexBwithSpsPps(const uint8_t* pkt, size_t pkt_size) {
+	static AnnexbFrame PrepareAnnexBwithSpsPps(const uint8_t *pkt, size_t pkt_size)
+	{
 		AnnexbFrame f;
-		std::vector<std::pair<const uint8_t*, size_t>> nalus;
+		std::vector<std::pair<const uint8_t *, size_t>> nalus;
 		SplitAnnexB(pkt, pkt_size, nalus);
 
-		auto push_sc = [&](std::vector<uint8_t>& v) {
-			static const uint8_t sc[4] = { 0,0,0,1 };
+		auto push_sc = [&](std::vector<uint8_t> &v)
+		{
+			static const uint8_t sc[4] = {0, 0, 0, 1};
 			v.insert(v.end(), sc, sc + 4);
-			};
+		};
 
-		for (auto& it : nalus) {
-			const uint8_t* p = it.first; size_t n = it.second;
-			if (!n) continue;
+		for (auto &it : nalus)
+		{
+			const uint8_t *p = it.first;
+			size_t n = it.second;
+			if (!n)
+				continue;
 			uint8_t t = p[0] & 0x1F;
-			if (t == 9) continue; // AUD 제거
-			if (t == 5) f.isIDR = true;
-			if (t == 7) { f.hasSPS = true; g_sps_b.assign(p, p + n); }
-			if (t == 8) { f.hasPPS = true; g_pps_b.assign(p, p + n); }
+			if (t == 9)
+				continue; // AUD 제거
+			if (t == 5)
+				f.isIDR = true;
+			if (t == 7)
+			{
+				f.hasSPS = true;
+				g_sps_b.assign(p, p + n);
+			}
+			if (t == 8)
+			{
+				f.hasPPS = true;
+				g_pps_b.assign(p, p + n);
+			}
 		}
 
-		if (f.isIDR && !(f.hasSPS && f.hasPPS)) {
-			if (!g_sps_b.empty()) { push_sc(f.data); f.data.insert(f.data.end(), g_sps_b.begin(), g_sps_b.end()); }
-			if (!g_pps_b.empty()) { push_sc(f.data); f.data.insert(f.data.end(), g_pps_b.begin(), g_pps_b.end()); }
+		if (f.isIDR && !(f.hasSPS && f.hasPPS))
+		{
+			if (!g_sps_b.empty())
+			{
+				push_sc(f.data);
+				f.data.insert(f.data.end(), g_sps_b.begin(), g_sps_b.end());
+			}
+			if (!g_pps_b.empty())
+			{
+				push_sc(f.data);
+				f.data.insert(f.data.end(), g_pps_b.begin(), g_pps_b.end());
+			}
 		}
 
-		for (auto& it : nalus) {
-			const uint8_t* p = it.first; size_t n = it.second;
+		for (auto &it : nalus)
+		{
+			const uint8_t *p = it.first;
+			size_t n = it.second;
 			uint8_t t = p[0] & 0x1F;
-			if (t == 9) continue;
+			if (t == 9)
+				continue;
 			push_sc(f.data);
 			f.data.insert(f.data.end(), p, p + n);
 		}
